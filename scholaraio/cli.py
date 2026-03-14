@@ -1406,6 +1406,112 @@ def cmd_setup(args: argparse.Namespace, cfg) -> None:
         run_wizard(cfg)
 
 
+def cmd_notify(args: argparse.Namespace, cfg) -> None:
+    from scholaraio import notify
+
+    ws_root = cfg._root / "workspace"
+    action = args.notify_action
+
+    if action == "init":
+        channels = args.channel or []
+        ws_dir = ws_root / args.name
+        config = notify.init_notify(
+            ws_dir,
+            query=args.query,
+            schedule=args.schedule,
+            channels=channels,
+            sources=args.sources or ["openalex"],
+            relevance_threshold=args.threshold,
+            max_papers=args.max_papers,
+        )
+        ui(f"通知任务已创建: {ws_dir}")
+        ui(f"  兴趣查询: {config['interest_query']}")
+        ui(f"  调度计划: {config['schedule']}")
+        ui(f"  频道数量: {len(config['channels'])}")
+        if not config["channels"]:
+            ui("  提示: 使用 --channel 'tgram://TOKEN/CHAT_ID' 添加推送频道")
+        ui(f"\n预览摘要效果: scholaraio notify run {args.name} --dry-run")
+
+    elif action == "run":
+        ws_dir = ws_root / args.name
+        if not (ws_dir / "notify.json").exists():
+            ui(f"错误: 通知任务不存在: {args.name}")
+            ui("请先运行: scholaraio notify init <名称> --query <查询词>")
+            return
+
+        dry_run = args.dry_run
+        mode = " (dry-run)" if dry_run else ""
+        ui(f"运行通知任务{mode}: {args.name}")
+
+        result = notify.run_notify(ws_dir, cfg, dry_run=dry_run)
+
+        ui(f"\n  拉取: {result['n_fetched']} 篇")
+        ui(f"  新增: {result['n_new']} 篇 (阈值过滤后)")
+        ui(f"  摘要: {result['digest_path']}")
+        if dry_run:
+            ui("  dry-run 模式: 未推送，未更新 last_run")
+        elif result["n_new"] == 0:
+            ui("  本期无新论文")
+        elif result["failed_channels"]:
+            ui(f"  推送失败频道: {result['failed_channels']}")
+        else:
+            ui(f"  已推送: {result['n_sent']} 篇")
+
+    elif action == "list":
+        tasks = notify.list_notify_tasks(ws_root)
+        if not tasks:
+            ui("没有通知任务")
+            ui("创建方法: scholaraio notify init <名称> --query <查询词>")
+            return
+        ui(f"共 {len(tasks)} 个通知任务:\n")
+        for t in tasks:
+            last = t["last_run"] or "从未运行"
+            ch_str = f"{len(t['channels'])} 个频道" if t["channels"] else "未配置频道"
+            ui(f"  {t['name']}")
+            ui(f"    查询: {t['query']}")
+            ui(f"    计划: {t['schedule']}  |  {ch_str}  |  上次运行: {last}")
+
+    elif action == "install":
+        ws_dir = ws_root / args.name
+        if not (ws_dir / "notify.json").exists():
+            ui(f"错误: 通知任务不存在: {args.name}")
+            return
+
+        from scholaraio.config import load_config as _lc
+
+        cfg_path = _lc.__code__.co_filename  # rough fallback
+        # Prefer the actual config file path from cfg._root
+        config_file = cfg._root / "config.yaml"
+        if not config_file.exists():
+            config_file = Path.home() / ".scholaraio" / "config.yaml"
+
+        service_path, timer_path = notify.install_systemd(ws_dir, config_file)
+        ui(f"systemd 文件已写入:")
+        ui(f"  {service_path}")
+        ui(f"  {timer_path}")
+        ws_name = args.name
+        ui(f"\n定时器已启动: scholaraio-notify-{ws_name}.timer")
+        ui(f"手动触发: systemctl --user start scholaraio-notify-{ws_name}.service")
+        ui(f"查看日志: journalctl --user -u scholaraio-notify-{ws_name}.service")
+
+    elif action == "history":
+        ws_dir = ws_root / args.name
+        records = notify.get_digest_history(cfg.index_db, args.name, limit=args.last)
+        if not records:
+            ui(f"暂无推送历史: {args.name}")
+            return
+        ui(f"推送历史 ({args.name}，最近 {len(records)} 条):\n")
+        for r in records:
+            sent = r["sent_at"][:10] if r["sent_at"] else "未推送"
+            ui(f"  {r['generated_at'][:10]}  {r['n_papers']:3d} 篇  [{sent}]  {r['digest_path']}")
+
+    else:
+        _log.error("未知 notify 子命令: %s", action)
+        import sys
+
+        sys.exit(1)
+
+
 def cmd_migrate_dirs(args: argparse.Namespace, cfg) -> None:
     from scholaraio.migrate import migrate_to_dirs
 
@@ -2113,6 +2219,39 @@ def main() -> None:
     p_setup_check.add_argument(
         "--lang", choices=["en", "zh"], default="zh", help="输出语言 / Output language (default: zh)"
     )
+
+    # --- notify ---
+    p_notify = sub.add_parser("notify", help="论文推送摘要（定期推送新论文到 Telegram/邮件等）")
+    p_notify.set_defaults(func=cmd_notify)
+    p_notify_sub = p_notify.add_subparsers(dest="notify_action", required=True)
+
+    p_ni = p_notify_sub.add_parser("init", help="创建或更新通知任务配置")
+    p_ni.add_argument("name", help="工作区名称（同时作为通知任务名）")
+    p_ni.add_argument("--query", required=True, help="感兴趣的研究方向（用于相关性评分）")
+    p_ni.add_argument("--schedule", default="0 8 * * 1", help="Cron 调度计划（默认: 每周一 08:00）")
+    p_ni.add_argument("--channel", action="append", default=None, metavar="URL",
+                      help="Apprise 推送频道 URL（可多次指定），如 tgram://TOKEN/CHAT_ID")
+    p_ni.add_argument("--sources", nargs="+", default=None,
+                      choices=["openalex", "library"],
+                      help="论文来源（默认: openalex）")
+    p_ni.add_argument("--threshold", type=float, default=0.65,
+                      help="相关性阈值 0-1（默认 0.65）")
+    p_ni.add_argument("--max-papers", type=int, default=10,
+                      help="每期最多收录论文数（默认 10）")
+
+    p_nr = p_notify_sub.add_parser("run", help="立即运行一次推送摘要")
+    p_nr.add_argument("name", help="通知任务名称（工作区名）")
+    p_nr.add_argument("--dry-run", action="store_true",
+                      help="只生成 draft.md，不推送也不更新 last_run")
+
+    p_notify_sub.add_parser("list", help="列出所有通知任务")
+
+    p_ninstall = p_notify_sub.add_parser("install", help="安装 systemd user timer")
+    p_ninstall.add_argument("name", help="通知任务名称")
+
+    p_nhist = p_notify_sub.add_parser("history", help="查看推送历史")
+    p_nhist.add_argument("name", help="通知任务名称")
+    p_nhist.add_argument("--last", type=int, default=10, help="显示最近 N 条（默认 10）")
 
     # --- migrate-dirs ---
     p_migrate = sub.add_parser("migrate-dirs", help="迁移 data/papers/ 从平铺结构到每篇一目录")

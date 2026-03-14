@@ -53,11 +53,15 @@ import = [
 mcp = [
     "mcp>=1.0",
 ]
+notify = [
+    "apprise>=1.7",
+]
 full = [
     "scholaraio[embed]",
     "scholaraio[topics]",
     "scholaraio[import]",
     "scholaraio[pdf]",
+    "scholaraio[notify]",
     "modelscope>=1.10",
     "curl-cffi>=0.5",
 ]

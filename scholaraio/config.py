@@ -172,6 +172,25 @@ class IngestConfig:
 
 
 @dataclass
+class NotifyConfig:
+    """论文推送通知全局默认配置。
+
+    单个工作区的 notify.json 可覆盖这里的所有字段。
+
+    Attributes:
+        default_schedule: 默认 Cron 调度计划（5 字段）。
+        default_threshold: 默认语义相关性阈值（0-1）。
+        default_max_papers: 每期默认最多收录论文数。
+        default_sources: 默认论文来源列表。
+    """
+
+    default_schedule: str = "0 8 * * 1"
+    default_threshold: float = 0.65
+    default_max_papers: int = 10
+    default_sources: list = field(default_factory=lambda: ["openalex"])
+
+
+@dataclass
 class ZoteroConfig:
     """Zotero 集成配置。
 
@@ -209,6 +228,7 @@ class Config:
     topics: TopicsConfig = field(default_factory=TopicsConfig)
     log: LogConfig = field(default_factory=LogConfig)
     zotero: ZoteroConfig = field(default_factory=ZoteroConfig)
+    notify: NotifyConfig = field(default_factory=NotifyConfig)
 
     # Root directory of the config file (used to resolve relative paths)
     _root: Path = field(default_factory=Path.cwd, repr=False, compare=False)
@@ -464,6 +484,14 @@ def _build_config(data: dict, root: Path) -> Config:
         library_type=zotero_data.get("library_type", "user"),
     )
 
+    notify_data = data.get("notify", {}) or {}
+    notify = NotifyConfig(
+        default_schedule=notify_data.get("default_schedule", "0 8 * * 1"),
+        default_threshold=float(notify_data.get("default_threshold", 0.65)),
+        default_max_papers=int(notify_data.get("default_max_papers", 10)),
+        default_sources=list(notify_data.get("default_sources", ["openalex"])),
+    )
+
     return Config(
         paths=paths,
         llm=llm,
@@ -473,5 +501,6 @@ def _build_config(data: dict, root: Path) -> Config:
         topics=topics,
         log=log,
         zotero=zotero,
+        notify=notify,
         _root=root,
     )
