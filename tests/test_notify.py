@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+from unittest.mock import patch
 
 from scholaraio.notify import (
     _cron_to_systemd_calendar,
@@ -15,6 +16,7 @@ from scholaraio.notify import (
     get_digest_history,
     init_notify,
     list_notify_tasks,
+    run_notify,
 )
 
 # ============================================================================
@@ -281,3 +283,147 @@ class TestSystemd:
         assert "Mon *-*-* 08:00:00" in timer
         assert "scholaraio-notify-protein-watch.service" in timer
         assert str(cfg_path) in service
+
+    def test_service_wanted_by_default_target(self, tmp_path):
+        ws_dir = tmp_path / "w"
+        init_notify(ws_dir, query="q")
+        service, _ = generate_systemd_units(ws_dir, tmp_path / "config.yaml")
+        assert "WantedBy=default.target" in service
+        assert "multi-user.target" not in service
+
+
+# ============================================================================
+#  run_notify
+# ============================================================================
+
+_SAMPLE_PAPERS = [
+    {
+        "doi": "10.1000/paper1",
+        "title": "Paper One",
+        "authors": ["Alice"],
+        "year": 2026,
+        "abstract": "About proteins.",
+        "cited_by_count": 10,
+        "venue": "Nature",
+        "relevance_score": 0.9,
+    },
+]
+
+
+def _make_cfg(tmp_path: Path):
+    """Return a minimal stub Config object pointing at tmp_path."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(index_db=tmp_path / "index.db", notify=SimpleNamespace())
+
+
+class TestRunNotify:
+    def _setup_ws(self, tmp_path, *, channels=None):
+        ws_dir = tmp_path / "my-watch"
+        # Use threshold=0.4 so fallback embed score (0.5) passes the filter
+        init_notify(ws_dir, query="protein folding", channels=channels or [], relevance_threshold=0.4)
+        return ws_dir
+
+    def test_dry_run_writes_draft_only(self, tmp_path):
+        ws_dir = self._setup_ws(tmp_path)
+        cfg = _make_cfg(tmp_path)
+        with patch("scholaraio.notify._fetch_openalex_recent", return_value=_SAMPLE_PAPERS):
+            result = run_notify(ws_dir, cfg, dry_run=True)
+        # draft.md must exist
+        assert (ws_dir / "draft.md").exists()
+        # dated archive must NOT exist in dry-run
+        digests = list((ws_dir / "digests").glob("*.md")) if (ws_dir / "digests").exists() else []
+        assert digests == []
+        # returned path points to draft.md
+        assert result["digest_path"] == str(ws_dir / "draft.md")
+        assert result["dry_run"] is True
+        assert result["n_sent"] == 0
+
+    def test_dry_run_does_not_update_last_run(self, tmp_path):
+        ws_dir = self._setup_ws(tmp_path)
+        cfg = _make_cfg(tmp_path)
+        with patch("scholaraio.notify._fetch_openalex_recent", return_value=_SAMPLE_PAPERS):
+            run_notify(ws_dir, cfg, dry_run=True)
+        import json
+
+        nc = json.loads((ws_dir / "notify.json").read_text())
+        assert nc["last_run"] is None
+
+    def test_dry_run_does_not_mark_seen(self, tmp_path):
+        ws_dir = self._setup_ws(tmp_path)
+        cfg = _make_cfg(tmp_path)
+        with patch("scholaraio.notify._fetch_openalex_recent", return_value=_SAMPLE_PAPERS):
+            run_notify(ws_dir, cfg, dry_run=True)
+        # DB may not even exist; if it does, seen table should be empty
+        db = tmp_path / "index.db"
+        if db.exists():
+            with sqlite3.connect(db) as conn:
+                try:
+                    rows = conn.execute("SELECT COUNT(*) FROM notify_seen").fetchone()
+                    assert rows[0] == 0
+                except sqlite3.OperationalError:
+                    pass  # table not created yet — fine
+
+    def test_successful_run_marks_seen_and_updates_last_run(self, tmp_path):
+        ws_dir = self._setup_ws(tmp_path, channels=["test://channel"])
+        cfg = _make_cfg(tmp_path)
+        with (
+            patch("scholaraio.notify._fetch_openalex_recent", return_value=_SAMPLE_PAPERS),
+            patch("scholaraio.notify._send_digest", return_value=[]),  # success
+        ):
+            result = run_notify(ws_dir, cfg, dry_run=False)
+
+        assert result["n_sent"] > 0
+        assert result["failed_channels"] == []
+
+        import json
+
+        nc = json.loads((ws_dir / "notify.json").read_text())
+        assert nc["last_run"] is not None
+
+        # Paper should be in seen table
+        with sqlite3.connect(tmp_path / "index.db") as conn:
+            count = conn.execute("SELECT COUNT(*) FROM notify_seen WHERE doi = ?", ("10.1000/paper1",)).fetchone()[0]
+        assert count == 1
+
+    def test_failed_delivery_does_not_mark_seen(self, tmp_path):
+        ws_dir = self._setup_ws(tmp_path, channels=["test://channel"])
+        cfg = _make_cfg(tmp_path)
+        with (
+            patch("scholaraio.notify._fetch_openalex_recent", return_value=_SAMPLE_PAPERS),
+            patch("scholaraio.notify._send_digest", return_value=["test://channel"]),  # failure
+        ):
+            result = run_notify(ws_dir, cfg, dry_run=False)
+
+        assert result["failed_channels"] == ["test://channel"]
+        assert result["n_sent"] == 0
+
+        import json
+
+        # last_run should NOT be updated on failure
+        nc = json.loads((ws_dir / "notify.json").read_text())
+        assert nc["last_run"] is None
+
+        # Paper should NOT be in seen table
+        db = tmp_path / "index.db"
+        with sqlite3.connect(db) as conn:
+            try:
+                count = conn.execute("SELECT COUNT(*) FROM notify_seen WHERE doi = ?", ("10.1000/paper1",)).fetchone()[
+                    0
+                ]
+                assert count == 0
+            except sqlite3.OperationalError:
+                pass  # table may not exist — acceptable
+
+    def test_no_channels_still_marks_seen(self, tmp_path):
+        """No channels = file-only mode; papers should still be marked seen."""
+        ws_dir = self._setup_ws(tmp_path, channels=[])
+        cfg = _make_cfg(tmp_path)
+        with patch("scholaraio.notify._fetch_openalex_recent", return_value=_SAMPLE_PAPERS):
+            result = run_notify(ws_dir, cfg, dry_run=False)
+
+        assert result["failed_channels"] == []
+        import json
+
+        nc = json.loads((ws_dir / "notify.json").read_text())
+        assert nc["last_run"] is not None

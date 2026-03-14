@@ -415,6 +415,15 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
+def _coerce_str_list(value: object) -> list[str]:
+    """Coerce a YAML value to list[str]: wrap bare string, cast list items."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, (list, tuple)):
+        return [str(v) for v in value]
+    return []
+
+
 def _build_config(data: dict, root: Path) -> Config:
     """Build Config dataclass from raw dict."""
     paths_data = data.get("paths", {}) or {}
@@ -490,7 +499,7 @@ def _build_config(data: dict, root: Path) -> Config:
         default_schedule=notify_data.get("default_schedule", "0 8 * * 1"),
         default_threshold=float(notify_data.get("default_threshold", 0.65)),
         default_max_papers=int(notify_data.get("default_max_papers", 10)),
-        default_sources=list(notify_data.get("default_sources", ["openalex"])),
+        default_sources=_coerce_str_list(notify_data.get("default_sources", ["openalex"])),
     )
 
     return Config(

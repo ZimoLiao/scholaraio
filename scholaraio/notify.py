@@ -262,7 +262,7 @@ def _fetch_openalex_recent(
         "search": query,
         "filter": ",".join(filters),
         "sort": "publication_date:desc",
-        "per-page": min(max_results, 100),
+        "per_page": min(max_results, 100),
         "select": (
             "id,title,authorships,publication_year,publication_date,"
             "doi,abstract_inverted_index,cited_by_count,primary_location"
@@ -323,31 +323,36 @@ def _fetch_openalex_recent(
     return results
 
 
-def _fetch_library_new(db_path: Path, *, since_date: str | None = None) -> list[dict]:
-    """Fetch papers recently added to the main library.
+def _fetch_library_new(db_path: Path) -> list[dict]:
+    """Fetch the most recently added papers from the main library.
+
+    Cross-session deduplication is handled by ``_filter_seen``; this function
+    simply returns the latest rows from papers_registry by insertion order.
 
     Args:
         db_path: index.db 路径。
-        since_date: 只返回此日期之后入库的论文（YYYY-MM-DD）。
 
     Returns:
-        简略论文字典列表（id/dir_name/doi）。
+        简略论文字典列表（id/dir_name/doi/title/year）。
     """
     if not db_path.exists():
         return []
     try:
         with sqlite3.connect(db_path) as conn:
             conn.row_factory = sqlite3.Row
-            if since_date:
-                rows = conn.execute(
-                    "SELECT id, dir_name, doi FROM papers_registry WHERE indexed_at >= ?",
-                    (since_date,),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT id, dir_name, doi FROM papers_registry ORDER BY rowid DESC LIMIT 50"
-                ).fetchall()
-        return [{"id": r["id"], "dir_name": r["dir_name"], "doi": r["doi"] or ""} for r in rows]
+            rows = conn.execute(
+                "SELECT id, dir_name, doi, title, year FROM papers_registry ORDER BY rowid DESC LIMIT 50"
+            ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "dir_name": r["dir_name"],
+                "doi": r["doi"] or "",
+                "title": r["title"] or "",
+                "year": r["year"],
+            }
+            for r in rows
+        ]
     except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
         _log.debug("library fetch 失败: %s", e)
         return []
@@ -552,7 +557,7 @@ def run_notify(ws_dir: Path, cfg, *, dry_run: bool = False) -> dict:
             all_papers.extend(fetched)
             _log.info("OpenAlex: 获取 %d 篇", len(fetched))
         elif source == "library":
-            fetched = _fetch_library_new(db_path, since_date=last_run)
+            fetched = _fetch_library_new(db_path)
             all_papers.extend(fetched)
             _log.info("本地库: 获取 %d 篇", len(fetched))
         else:
@@ -632,7 +637,9 @@ def run_notify(ws_dir: Path, cfg, *, dry_run: bool = False) -> dict:
         "n_fetched": n_fetched,
         "n_new": n_new,
         "n_sent": n_sent,
-        "digest_path": str(digest_path),
+        # In dry-run mode the dated archive file is not written; return draft_path
+        # so callers always receive a path that actually exists on disk.
+        "digest_path": str(draft_path if dry_run else digest_path),
         "dry_run": dry_run,
         "failed_channels": failed_channels,
     }

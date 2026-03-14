@@ -1406,6 +1406,14 @@ def cmd_setup(args: argparse.Namespace, cfg) -> None:
         run_wizard(cfg)
 
 
+_NOTIFY_NAME_RE = __import__("re").compile(r"^[A-Za-z0-9_.-]+$")
+
+
+def _validate_notify_name(name: str) -> None:
+    if not _NOTIFY_NAME_RE.match(name):
+        raise SystemExit(f"错误: 通知任务名称只允许字母、数字、连字符、下划线和点（不含空格）: {name!r}")
+
+
 def cmd_notify(args: argparse.Namespace, cfg) -> None:
     from scholaraio import notify
 
@@ -1413,16 +1421,19 @@ def cmd_notify(args: argparse.Namespace, cfg) -> None:
     action = args.notify_action
 
     if action == "init":
+        _validate_notify_name(args.name)
         channels = args.channel or []
         ws_dir = ws_root / args.name
+        # Apply global NotifyConfig defaults when arg was not explicitly provided
+        nc = cfg.notify
         config = notify.init_notify(
             ws_dir,
             query=args.query,
-            schedule=args.schedule,
+            schedule=args.schedule if args.schedule is not None else nc.default_schedule,
             channels=channels,
-            sources=args.sources or ["openalex"],
-            relevance_threshold=args.threshold,
-            max_papers=args.max_papers,
+            sources=args.sources or list(nc.default_sources),
+            relevance_threshold=args.threshold if args.threshold is not None else nc.default_threshold,
+            max_papers=args.max_papers if args.max_papers is not None else nc.default_max_papers,
         )
         ui(f"通知任务已创建: {ws_dir}")
         ui(f"  兴趣查询: {config['interest_query']}")
@@ -1472,6 +1483,7 @@ def cmd_notify(args: argparse.Namespace, cfg) -> None:
             ui(f"    计划: {t['schedule']}  |  {ch_str}  |  上次运行: {last}")
 
     elif action == "install":
+        _validate_notify_name(args.name)
         ws_dir = ws_root / args.name
         if not (ws_dir / "notify.json").exists():
             ui(f"错误: 通知任务不存在: {args.name}")
@@ -2232,7 +2244,7 @@ def main() -> None:
     p_ni = p_notify_sub.add_parser("init", help="创建或更新通知任务配置")
     p_ni.add_argument("name", help="工作区名称（同时作为通知任务名）")
     p_ni.add_argument("--query", required=True, help="感兴趣的研究方向（用于相关性评分）")
-    p_ni.add_argument("--schedule", default="0 8 * * 1", help="Cron 调度计划（默认: 每周一 08:00）")
+    p_ni.add_argument("--schedule", default=None, help="Cron 调度计划（默认: 每周一 08:00）")
     p_ni.add_argument(
         "--channel",
         action="append",
@@ -2243,8 +2255,8 @@ def main() -> None:
     p_ni.add_argument(
         "--sources", nargs="+", default=None, choices=["openalex", "library"], help="论文来源（默认: openalex）"
     )
-    p_ni.add_argument("--threshold", type=float, default=0.65, help="相关性阈值 0-1（默认 0.65）")
-    p_ni.add_argument("--max-papers", type=int, default=10, help="每期最多收录论文数（默认 10）")
+    p_ni.add_argument("--threshold", type=float, default=None, help="相关性阈值 0-1（默认 0.65）")
+    p_ni.add_argument("--max-papers", type=int, default=None, help="每期最多收录论文数（默认 10）")
 
     p_nr = p_notify_sub.add_parser("run", help="立即运行一次推送摘要")
     p_nr.add_argument("name", help="通知任务名称（工作区名）")
