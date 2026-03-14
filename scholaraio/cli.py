@@ -1477,13 +1477,17 @@ def cmd_notify(args: argparse.Namespace, cfg) -> None:
             ui(f"错误: 通知任务不存在: {args.name}")
             return
 
-        from scholaraio.config import load_config as _lc
+        # Prefer SCHOLARAIO_CONFIG env override so the installed unit matches
+        # the current session's config; fall back to the discovered config file.
+        import os
 
-        cfg_path = _lc.__code__.co_filename  # rough fallback
-        # Prefer the actual config file path from cfg._root
-        config_file = cfg._root / "config.yaml"
-        if not config_file.exists():
-            config_file = Path.home() / ".scholaraio" / "config.yaml"
+        env_cfg = os.environ.get("SCHOLARAIO_CONFIG")
+        if env_cfg:
+            config_file = Path(env_cfg)
+        else:
+            config_file = cfg._root / "config.yaml"
+            if not config_file.exists():
+                config_file = Path.home() / ".scholaraio" / "config.yaml"
 
         service_path, timer_path = notify.install_systemd(ws_dir, config_file)
         ui("systemd 文件已写入:")

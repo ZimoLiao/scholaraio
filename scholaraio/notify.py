@@ -594,9 +594,11 @@ def run_notify(ws_dir: Path, cfg, *, dry_run: bool = False) -> dict:
     digest_path = digests_dir / f"{date_str}.md"
     draft_path = ws_dir / "draft.md"
 
-    digest_path.write_text(digest_text, encoding="utf-8")
+    # In dry-run mode, only write the draft preview; skip the dated archive file.
+    if not dry_run:
+        digest_path.write_text(digest_text, encoding="utf-8")
+        _log.info("Digest 已写入: %s (%d 篇)", digest_path, n_new)
     draft_path.write_text(digest_text, encoding="utf-8")
-    _log.info("Digest 已写入: %s (%d 篇)", digest_path, n_new)
 
     failed_channels: list[str] = []
     n_sent = 0
@@ -607,12 +609,16 @@ def run_notify(ws_dir: Path, cfg, *, dry_run: bool = False) -> dict:
             failed_channels = _send_digest(digest_text, channels, title)
             n_sent = n_new if not failed_channels else 0
 
-        # Mark seen and persist state
-        _mark_seen(top_papers, db_path, ws_name)
-        notify_cfg["last_run"] = date_str
-        _save_notify_config(ws_dir, notify_cfg)
+        # Only mark papers as seen and advance last_run when delivery either
+        # succeeded or was not attempted (no channels configured).  If all
+        # channels failed, skip so the papers remain eligible for a retry.
+        delivery_ok = not channels or not failed_channels
+        if delivery_ok:
+            _mark_seen(top_papers, db_path, ws_name)
+            notify_cfg["last_run"] = date_str
+            _save_notify_config(ws_dir, notify_cfg)
 
-        # Record in DB
+        # Record in DB regardless (captures both successful and failed runs)
         _record_digest(
             db_path,
             ws_name,
@@ -730,7 +736,7 @@ StandardOutput=journal
 StandardError=journal
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
 """
 
     timer = f"""\
@@ -759,8 +765,8 @@ def install_systemd(ws_dir: Path, cfg_path: Path) -> tuple[Path, Path]:
     Returns:
         ``(service_path, timer_path)`` 已写入文件路径二元组。
 
-    Raises:
-        RuntimeError: systemctl 调用失败（会记录 warning，不中断流程）。
+    Note:
+        systemctl 调用失败时只记录 warning，不抛出异常，流程照常返回。
     """
     import subprocess
 

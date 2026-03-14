@@ -187,7 +187,7 @@ class NotifyConfig:
     default_schedule: str = "0 8 * * 1"
     default_threshold: float = 0.65
     default_max_papers: int = 10
-    default_sources: list = field(default_factory=lambda: ["openalex"])
+    default_sources: list[str] = field(default_factory=lambda: ["openalex"])
 
 
 @dataclass
@@ -218,6 +218,7 @@ class Config:
         topics: BERTopic 主题建模配置。
         log: 日志与指标配置。
         zotero: Zotero 集成配置。
+        notify: 论文推送通知全局默认配置。
     """
 
     paths: PathsConfig = field(default_factory=PathsConfig)
