@@ -64,8 +64,6 @@ def _ensure_notify_tables(db_path: Path) -> None:
 
 def _filter_seen(papers: list[dict], db_path: Path, workspace: str) -> list[dict]:
     """Remove papers whose DOI is already in notify_seen."""
-    if not db_path.exists():
-        return papers
     _ensure_notify_tables(db_path)
 
     dois = [p["doi"] for p in papers if p.get("doi")]
@@ -86,7 +84,7 @@ def _filter_seen(papers: list[dict], db_path: Path, workspace: str) -> list[dict
 
 def _mark_seen(papers: list[dict], db_path: Path, workspace: str) -> None:
     """Mark papers as seen in notify_seen table."""
-    if not papers or not db_path.exists():
+    if not papers:
         return
     _ensure_notify_tables(db_path)
 
@@ -110,8 +108,6 @@ def _record_digest(
     sent: bool,
 ) -> None:
     """Record a digest run in notify_digests table."""
-    if not db_path.exists():
-        return
     _ensure_notify_tables(db_path)
 
     now = datetime.now(timezone.utc).isoformat()
@@ -146,8 +142,6 @@ def get_digest_history(db_path: Path, workspace: str, limit: int = 10) -> list[d
     Returns:
         摘要记录列表（newest first）。
     """
-    if not db_path.exists():
-        return []
     _ensure_notify_tables(db_path)
 
     with sqlite3.connect(db_path) as conn:

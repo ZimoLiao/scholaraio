@@ -159,10 +159,12 @@ class TestNotifySeen:
         result = _filter_seen(papers, db_path, "ws")
         assert len(result) == 2
 
-    def test_no_db_returns_all(self, tmp_path):
+    def test_new_db_created_and_returns_all(self, tmp_path):
+        # DB doesn't exist yet — should be created, all papers pass through (none seen)
         papers = [{"doi": "10.1/x"}]
-        result = _filter_seen(papers, tmp_path / "nonexistent.db", "ws")
+        result = _filter_seen(papers, tmp_path / "new.db", "ws")
         assert result == papers
+        assert (tmp_path / "new.db").exists()
 
 
 # ============================================================================
@@ -223,8 +225,9 @@ class TestGetDigestHistory:
         result = get_digest_history(db_path, "ws")
         assert result == []
 
-    def test_nonexistent_db(self, tmp_path):
-        result = get_digest_history(tmp_path / "nonexistent.db", "ws")
+    def test_empty_new_db(self, tmp_path):
+        # DB doesn't exist yet — auto-created, returns empty history
+        result = get_digest_history(tmp_path / "new.db", "ws")
         assert result == []
 
     def test_records_returned(self, tmp_path):
