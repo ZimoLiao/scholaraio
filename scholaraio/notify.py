@@ -37,6 +37,7 @@ _log = logging.getLogger(__name__)
 def _ensure_notify_tables(db_path: Path) -> None:
     """Create notify_seen and notify_digests tables if not exists."""
     with sqlite3.connect(db_path) as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS notify_seen (
@@ -247,7 +248,7 @@ def _fetch_openalex_recent(
     Args:
         query: 关键词/语义查询字符串。
         since_date: 只拉取此日期之后发表的论文（YYYY-MM-DD）。
-        max_results: 最多返回条数（上限 200）。
+        max_results: 最多返回条数（单次请求上限 100，不分页）。
 
     Returns:
         论文字典列表，含 doi/title/authors/year/abstract/cited_by_count/venue。
@@ -402,6 +403,9 @@ def _score_papers(papers: list[dict], query: str, cfg) -> list[dict]:
     except ImportError:
         _log.warning("语义评分不可用（缺少 embed 依赖），使用默认分数 0.5")
         scored = [{**p, "relevance_score": 0.5} for p in papers]
+    except Exception as e:
+        _log.warning("语义评分失败（%s），使用默认分数 0.5", e)
+        scored = [{**p, "relevance_score": 0.5} for p in papers]
 
     return sorted(scored, key=lambda p: p.get("relevance_score", 0), reverse=True)
 
@@ -492,6 +496,11 @@ def _send_digest(digest_text: str, channels: list[str], title: str) -> list[str]
 
     Returns:
         推送失败的 channel URL 列表（成功时为空列表）。
+
+    Note:
+        Apprise 的 ``notify()`` 返回整体成功/失败布尔值，无法区分哪个单独
+        channel 失败。返回值遵循"全成功 → []，任意失败 → 全部 channels"的
+        保守语义：宁可多重试也不丢失推送。
     """
     if not channels:
         return []
@@ -577,16 +586,23 @@ def run_notify(ws_dir: Path, cfg, *, dry_run: bool = False) -> dict:
         deduped.append(p)
 
     # --- Cross-session dedup (notify_seen table) ---
-    new_papers = _filter_seen(deduped, db_path, ws_name)
+    # Skip DB lookup in dry-run to avoid creating index.db as a side effect.
+    new_papers = deduped if dry_run else _filter_seen(deduped, db_path, ws_name)
 
     # --- Relevance scoring ---
     if query:
         scored = _score_papers(new_papers, query, cfg)
     else:
-        scored = new_papers
+        # No query: assign neutral score so renderer shows consistent output
+        scored = [{**p, "relevance_score": 0.5} for p in new_papers]
 
     # --- Threshold filter + top-N ---
-    filtered = [p for p in scored if p.get("relevance_score", 0.5) >= threshold]
+    # When there is no query the scores are all 0.5; skip threshold filtering
+    # so results are not unexpectedly suppressed by the user's threshold setting.
+    if query:
+        filtered = [p for p in scored if p.get("relevance_score", 0.5) >= threshold]
+    else:
+        filtered = scored
     top_papers = filtered[:max_papers]
     n_new = len(top_papers)
 
@@ -594,16 +610,20 @@ def run_notify(ws_dir: Path, cfg, *, dry_run: bool = False) -> dict:
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     digest_text = _render_digest(top_papers, query, ws_name, date_str)
 
-    digests_dir = ws_dir / "digests"
-    digests_dir.mkdir(exist_ok=True)
-    digest_path = digests_dir / f"{date_str}.md"
     draft_path = ws_dir / "draft.md"
+    draft_path.write_text(digest_text, encoding="utf-8")
 
-    # In dry-run mode, only write the draft preview; skip the dated archive file.
+    # Only create the dated archive in real runs to keep dry-run side-effect-free.
+    digests_dir = ws_dir / "digests"
+    if not dry_run:
+        digests_dir.mkdir(exist_ok=True)
+
+    # Unique filename: append HHMMSSz to avoid overwriting on same-day reruns.
+    time_str = datetime.now(timezone.utc).strftime("%H%M%Sz")
+    digest_path = digests_dir / f"{date_str}-{time_str}.md"
     if not dry_run:
         digest_path.write_text(digest_text, encoding="utf-8")
         _log.info("Digest 已写入: %s (%d 篇)", digest_path, n_new)
-    draft_path.write_text(digest_text, encoding="utf-8")
 
     failed_channels: list[str] = []
     n_sent = 0
@@ -724,11 +744,19 @@ def generate_systemd_units(ws_dir: Path, cfg_path: Path) -> tuple[str, str]:
     Returns:
         ``(service_content, timer_content)`` 字符串二元组。
     """
+    import sys
+
     ws_name = ws_dir.name
     notify_cfg = _load_notify_config(ws_dir)
     calendar = _cron_to_systemd_calendar(notify_cfg.get("schedule") or "0 8 * * 1")
 
     service_name = f"scholaraio-notify-{ws_name}"
+
+    # Use the absolute Python interpreter to avoid PATH lookup failures in
+    # systemd user service environments. Quote the config path in case it
+    # contains spaces.
+    python_exe = sys.executable
+    quoted_cfg = str(cfg_path).replace('"', '\\"')
 
     service = f"""\
 [Unit]
@@ -737,8 +765,8 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=scholaraio notify run {ws_name}
-Environment=SCHOLARAIO_CONFIG={cfg_path}
+ExecStart={python_exe} -m scholaraio.cli notify run {ws_name}
+Environment=SCHOLARAIO_CONFIG="{quoted_cfg}"
 StandardOutput=journal
 StandardError=journal
 

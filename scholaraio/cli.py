@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import re
 import sys
 from pathlib import Path
 
@@ -1406,7 +1407,7 @@ def cmd_setup(args: argparse.Namespace, cfg) -> None:
         run_wizard(cfg)
 
 
-_NOTIFY_NAME_RE = __import__("re").compile(r"^[A-Za-z0-9_.-]+$")
+_NOTIFY_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
 def _validate_notify_name(name: str) -> None:
@@ -1511,7 +1512,6 @@ def cmd_notify(args: argparse.Namespace, cfg) -> None:
         ui(f"查看日志: journalctl --user -u scholaraio-notify-{ws_name}.service")
 
     elif action == "history":
-        ws_dir = ws_root / args.name
         records = notify.get_digest_history(cfg.index_db, args.name, limit=args.last)
         if not records:
             ui(f"暂无推送历史: {args.name}")

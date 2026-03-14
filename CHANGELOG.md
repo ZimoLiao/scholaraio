@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Paper notification digests** (`scholaraio notify`): subscribe to a research topic and receive periodic paper digests via Telegram, email, Slack, or any Apprise-supported channel. Subcommands: `init` (create/update task), `run` (manual trigger, `--dry-run` supported), `list`, `install` (systemd user timer), `history`. Semantic relevance scoring via Qwen3-Embedding; state tracked in `data/index.db`; digests archived under `workspace/<name>/digests/`. Install optional dependency: `pip install scholaraio[notify]`.
+
 ## [1.0.0] — 2026-03-14
 
 ### Added

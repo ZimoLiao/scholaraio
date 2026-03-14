@@ -279,7 +279,7 @@ class TestSystemd:
 
         service, timer = generate_systemd_units(ws_dir, cfg_path)
 
-        assert "scholaraio notify run protein-watch" in service
+        assert "notify run protein-watch" in service
         assert "Mon *-*-* 08:00:00" in timer
         assert "scholaraio-notify-protein-watch.service" in timer
         assert str(cfg_path) in service
