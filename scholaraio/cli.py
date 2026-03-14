@@ -1486,7 +1486,7 @@ def cmd_notify(args: argparse.Namespace, cfg) -> None:
             config_file = Path.home() / ".scholaraio" / "config.yaml"
 
         service_path, timer_path = notify.install_systemd(ws_dir, config_file)
-        ui(f"systemd 文件已写入:")
+        ui("systemd 文件已写入:")
         ui(f"  {service_path}")
         ui(f"  {timer_path}")
         ws_name = args.name
@@ -2229,20 +2229,22 @@ def main() -> None:
     p_ni.add_argument("name", help="工作区名称（同时作为通知任务名）")
     p_ni.add_argument("--query", required=True, help="感兴趣的研究方向（用于相关性评分）")
     p_ni.add_argument("--schedule", default="0 8 * * 1", help="Cron 调度计划（默认: 每周一 08:00）")
-    p_ni.add_argument("--channel", action="append", default=None, metavar="URL",
-                      help="Apprise 推送频道 URL（可多次指定），如 tgram://TOKEN/CHAT_ID")
-    p_ni.add_argument("--sources", nargs="+", default=None,
-                      choices=["openalex", "library"],
-                      help="论文来源（默认: openalex）")
-    p_ni.add_argument("--threshold", type=float, default=0.65,
-                      help="相关性阈值 0-1（默认 0.65）")
-    p_ni.add_argument("--max-papers", type=int, default=10,
-                      help="每期最多收录论文数（默认 10）")
+    p_ni.add_argument(
+        "--channel",
+        action="append",
+        default=None,
+        metavar="URL",
+        help="Apprise 推送频道 URL（可多次指定），如 tgram://TOKEN/CHAT_ID",
+    )
+    p_ni.add_argument(
+        "--sources", nargs="+", default=None, choices=["openalex", "library"], help="论文来源（默认: openalex）"
+    )
+    p_ni.add_argument("--threshold", type=float, default=0.65, help="相关性阈值 0-1（默认 0.65）")
+    p_ni.add_argument("--max-papers", type=int, default=10, help="每期最多收录论文数（默认 10）")
 
     p_nr = p_notify_sub.add_parser("run", help="立即运行一次推送摘要")
     p_nr.add_argument("name", help="通知任务名称（工作区名）")
-    p_nr.add_argument("--dry-run", action="store_true",
-                      help="只生成 draft.md，不推送也不更新 last_run")
+    p_nr.add_argument("--dry-run", action="store_true", help="只生成 draft.md，不推送也不更新 last_run")
 
     p_notify_sub.add_parser("list", help="列出所有通知任务")
 

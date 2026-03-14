@@ -5,9 +5,6 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
 
 from scholaraio.notify import (
     _cron_to_systemd_calendar,
@@ -19,7 +16,6 @@ from scholaraio.notify import (
     init_notify,
     list_notify_tasks,
 )
-
 
 # ============================================================================
 #  init_notify

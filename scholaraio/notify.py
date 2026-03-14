@@ -74,9 +74,7 @@ def _filter_seen(papers: list[dict], db_path: Path, workspace: str) -> list[dict
     with sqlite3.connect(db_path) as conn:
         seen = {
             row[0]
-            for row in conn.execute(
-                f"SELECT doi FROM notify_seen WHERE doi IN ({placeholders})", dois
-            ).fetchall()
+            for row in conn.execute(f"SELECT doi FROM notify_seen WHERE doi IN ({placeholders})", dois).fetchall()
         }
 
     return [p for p in papers if p.get("doi") not in seen]
@@ -295,9 +293,7 @@ def _fetch_openalex_recent(
         inv_idx = work.get("abstract_inverted_index")
         if inv_idx:
             try:
-                word_positions = [
-                    (pos, word) for word, positions in inv_idx.items() for pos in positions
-                ]
+                word_positions = [(pos, word) for word, positions in inv_idx.items() for pos in positions]
                 abstract = " ".join(w for _, w in sorted(word_positions))
             except Exception:
                 pass
@@ -386,7 +382,7 @@ def _score_papers(papers: list[dict], query: str, cfg) -> list[dict]:
 
         from scholaraio.vectors import _embed_batch
 
-        all_texts = [query] + texts
+        all_texts = [query, *texts]
         embeddings = _embed_batch(all_texts, cfg)
         query_emb = np.array(embeddings[0], dtype=np.float32)
         paper_embs = np.array(embeddings[1:], dtype=np.float32)
@@ -684,9 +680,14 @@ def _cron_to_systemd_calendar(cron: str) -> str:
 
     minute, hour, dom, month, dow = parts
     day_map = {
-        "0": "Sun", "7": "Sun",
-        "1": "Mon", "2": "Tue", "3": "Wed",
-        "4": "Thu", "5": "Fri", "6": "Sat",
+        "0": "Sun",
+        "7": "Sun",
+        "1": "Mon",
+        "2": "Tue",
+        "3": "Wed",
+        "4": "Thu",
+        "5": "Fri",
+        "6": "Sat",
     }
 
     if dom == "*" and month == "*":
