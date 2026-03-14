@@ -15,6 +15,8 @@ build/
 
 # Tests cache & IDE
 .pytest_cache/
+.coverage
+htmlcov/
 .vscode/
 
 # SQLite temp files
