@@ -43,7 +43,7 @@ def _ensure_notify_tables(db_path: Path) -> None:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS notify_seen (
-                doi       TEXT PRIMARY KEY,
+                dedup_key     TEXT PRIMARY KEY,
                 first_seen_at TEXT NOT NULL,
                 workspace TEXT
             )
@@ -65,22 +65,53 @@ def _ensure_notify_tables(db_path: Path) -> None:
         conn.commit()
 
 
+def _dedup_key(paper: dict) -> str:
+    """Return a stable dedup key for a paper.
+
+    Priority order:
+    1. DOI (normalised, ``doi:<value>``)
+    2. OpenAlex ID (``oa:<value>``)
+    3. Library UUID (``lib:<value>``)
+    4. Library dir_name (``dir:<value>``)
+
+    Papers without any of these identifiers are not deduplicated.
+    """
+    doi = (paper.get("doi") or "").strip()
+    if doi:
+        return f"doi:{doi}"
+    oa_id = (paper.get("openalex_id") or "").strip()
+    if oa_id:
+        # Strip URL prefix if present
+        oa_id = oa_id.removeprefix("https://openalex.org/")
+        return f"oa:{oa_id}"
+    lib_id = (paper.get("id") or "").strip()
+    if lib_id:
+        return f"lib:{lib_id}"
+    dir_name = (paper.get("dir_name") or "").strip()
+    if dir_name:
+        return f"dir:{dir_name}"
+    return ""
+
+
 def _filter_seen(papers: list[dict], db_path: Path, workspace: str) -> list[dict]:
-    """Remove papers whose DOI is already in notify_seen."""
+    """Remove papers whose dedup key is already in notify_seen."""
     _ensure_notify_tables(db_path)
 
-    dois = [p["doi"] for p in papers if p.get("doi")]
-    if not dois:
+    keyed = [(p, _dedup_key(p)) for p in papers]
+    keys = [k for _, k in keyed if k]
+    if not keys:
         return papers
 
-    placeholders = ",".join("?" * len(dois))
+    placeholders = ",".join("?" * len(keys))
     with sqlite3.connect(db_path) as conn:
         seen = {
             row[0]
-            for row in conn.execute(f"SELECT doi FROM notify_seen WHERE doi IN ({placeholders})", dois).fetchall()
+            for row in conn.execute(
+                f"SELECT dedup_key FROM notify_seen WHERE dedup_key IN ({placeholders})", keys
+            ).fetchall()
         }
 
-    return [p for p in papers if p.get("doi") not in seen]
+    return [p for p, k in keyed if not k or k not in seen]
 
 
 def _mark_seen(papers: list[dict], db_path: Path, workspace: str) -> None:
@@ -90,11 +121,11 @@ def _mark_seen(papers: list[dict], db_path: Path, workspace: str) -> None:
     _ensure_notify_tables(db_path)
 
     now = datetime.now(timezone.utc).isoformat()
-    rows = [(p["doi"], now, workspace) for p in papers if p.get("doi")]
+    rows = [(k, now, workspace) for p in papers if (k := _dedup_key(p))]
     if rows:
         with sqlite3.connect(db_path) as conn:
             conn.executemany(
-                "INSERT OR IGNORE INTO notify_seen (doi, first_seen_at, workspace) VALUES (?, ?, ?)",
+                "INSERT OR IGNORE INTO notify_seen (dedup_key, first_seen_at, workspace) VALUES (?, ?, ?)",
                 rows,
             )
             conn.commit()
@@ -768,6 +799,11 @@ def _cron_to_systemd_calendar(cron: str) -> str:
     if not minute.isdigit() and minute != "*":
         return "weekly"
     if not hour.isdigit() and hour != "*":
+        return "weekly"
+    # Validate numeric ranges to avoid generating invalid OnCalendar strings.
+    if minute.isdigit() and not (0 <= int(minute) <= 59):
+        return "weekly"
+    if hour.isdigit() and not (0 <= int(hour) <= 23):
         return "weekly"
 
     day_map = {

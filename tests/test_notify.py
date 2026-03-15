@@ -129,17 +129,11 @@ class TestListNotifyTasks:
 
 class TestNotifySeen:
     def _make_db(self, tmp_path) -> Path:
+        # Let _ensure_notify_tables create the schema so tests stay in sync.
+        from scholaraio.notify import _ensure_notify_tables
+
         db_path = tmp_path / "index.db"
-        with sqlite3.connect(db_path) as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS notify_seen (
-                    doi TEXT PRIMARY KEY,
-                    first_seen_at TEXT NOT NULL,
-                    workspace TEXT
-                )
-                """
-            )
+        _ensure_notify_tables(db_path)
         return db_path
 
     def test_filter_seen_empty_db(self, tmp_path):
@@ -163,7 +157,7 @@ class TestNotifySeen:
         _mark_seen([paper], db_path, "ws")
         _mark_seen([paper], db_path, "ws")  # should not raise
         with sqlite3.connect(db_path) as conn:
-            count = conn.execute("SELECT COUNT(*) FROM notify_seen WHERE doi = ?", ("10.1000/abc",)).fetchone()[0]
+            count = conn.execute("SELECT COUNT(*) FROM notify_seen WHERE dedup_key = ?", ("doi:10.1000/abc",)).fetchone()[0]
         assert count == 1
 
     def test_filter_seen_no_doi_papers_pass_through(self, tmp_path):
@@ -412,7 +406,7 @@ class TestRunNotify:
 
         # Paper should be in seen table
         with sqlite3.connect(tmp_path / "index.db") as conn:
-            count = conn.execute("SELECT COUNT(*) FROM notify_seen WHERE doi = ?", ("10.1000/paper1",)).fetchone()[0]
+            count = conn.execute("SELECT COUNT(*) FROM notify_seen WHERE dedup_key = ?", ("doi:10.1000/paper1",)).fetchone()[0]
         assert count == 1
 
     def test_failed_delivery_does_not_mark_seen(self, tmp_path):
@@ -437,7 +431,7 @@ class TestRunNotify:
         db = tmp_path / "index.db"
         with sqlite3.connect(db) as conn:
             try:
-                count = conn.execute("SELECT COUNT(*) FROM notify_seen WHERE doi = ?", ("10.1000/paper1",)).fetchone()[
+                count = conn.execute("SELECT COUNT(*) FROM notify_seen WHERE dedup_key = ?", ("doi:10.1000/paper1",)).fetchone()[
                     0
                 ]
                 assert count == 0

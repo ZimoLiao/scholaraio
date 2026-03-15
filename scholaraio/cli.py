@@ -1424,18 +1424,21 @@ def cmd_notify(args: argparse.Namespace, cfg) -> None:
     if action == "init":
         _validate_notify_name(args.name)
         ws_dir = ws_root / args.name
-        # Pass None for optional fields that were not supplied so init_notify()
-        # preserves existing notify.json values (e.g. "re-init to update query
-        # only" must not silently clear channels/schedule).
-        # init_notify() applies built-in defaults for genuinely new tasks.
+        # For NEW tasks (notify.json doesn't exist yet), apply cfg.notify global
+        # defaults when the user didn't supply an explicit flag.  For existing
+        # tasks, pass None so init_notify() preserves the stored values.
+        is_new = not (ws_dir / "notify.json").exists()
+        nc = cfg.notify
         config = notify.init_notify(
             ws_dir,
             query=args.query,
-            schedule=args.schedule,  # None → preserve / built-in default
+            schedule=args.schedule if args.schedule is not None else (nc.default_schedule if is_new else None),
             channels=args.channel,  # None → preserve; [] would clear
-            sources=args.sources,  # None → preserve / built-in default
-            relevance_threshold=args.threshold,
-            max_papers=args.max_papers,
+            sources=args.sources if args.sources is not None else (list(nc.default_sources) if is_new else None),
+            relevance_threshold=args.threshold
+            if args.threshold is not None
+            else (nc.default_threshold if is_new else None),
+            max_papers=args.max_papers if args.max_papers is not None else (nc.default_max_papers if is_new else None),
         )
         ui(f"通知任务已创建: {ws_dir}")
         ui(f"  兴趣查询: {config['interest_query']}")
@@ -1501,11 +1504,14 @@ def cmd_notify(args: argparse.Namespace, cfg) -> None:
 
         env_cfg = os.environ.get("SCHOLARAIO_CONFIG")
         if env_cfg:
-            config_file = Path(env_cfg)
+            config_file = Path(env_cfg).expanduser().resolve()
         else:
-            config_file = cfg._root / "config.yaml"
+            config_file = (cfg._root / "config.yaml").resolve()
             if not config_file.exists():
-                config_file = Path.home() / ".scholaraio" / "config.yaml"
+                config_file = (Path.home() / ".scholaraio" / "config.yaml").resolve()
+
+        if not config_file.exists():
+            ui(f"警告: 配置文件不存在: {config_file}，systemd unit 将使用该路径但运行时可能找不到")
 
         service_path, timer_path = notify.install_systemd(ws_dir, config_file)
         ui("systemd 文件已写入:")
