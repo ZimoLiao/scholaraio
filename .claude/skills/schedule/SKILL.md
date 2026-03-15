@@ -101,7 +101,7 @@ scholaraio notify init <名称> --query "<新查询词>" --threshold 0.7
 - **去重**：已推送过的论文 DOI 记录在 `data/index.db` 的 `notify_seen` 表，不会重复出现
 - **评分**：使用与主库相同的 Qwen3-Embedding 模型进行语义相关性评分
 - **来源**：默认从 OpenAlex 拉取，也支持监控本地库新增论文（`--sources library`）
-- **摘要文件**：每次运行生成 `workspace/<名称>/digests/YYYY-MM-DD.md` 和 `draft.md`（预览用）
+- **摘要文件**：每次运行生成 `workspace/<名称>/digests/YYYY-MM-DD-HHMMSSz.md`（时间戳防覆盖）和 `draft.md`（最新预览用）
 
 ## 示例
 

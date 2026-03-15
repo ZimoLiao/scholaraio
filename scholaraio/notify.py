@@ -364,7 +364,7 @@ def _fetch_library_new(db_path: Path) -> list[dict]:
 # ============================================================================
 
 
-def _score_papers(papers: list[dict], query: str, cfg) -> list[dict]:
+def _score_papers(papers: list[dict], query: str, cfg) -> tuple[list[dict], bool]:
     """Score papers by semantic similarity to query string.
 
     Uses the same embedding model as vectors.py. Falls back to uniform 0.5
@@ -376,10 +376,12 @@ def _score_papers(papers: list[dict], query: str, cfg) -> list[dict]:
         cfg: ScholarAIO Config 对象。
 
     Returns:
-        papers 列表（每项追加 ``relevance_score`` 字段），按分数降序排列。
+        ``(scored, real_scores)`` 二元组：scored 是每项追加 ``relevance_score``
+        字段并按分数降序排列的论文列表；real_scores 为 True 表示使用了真实嵌入，
+        False 表示降级为均匀分数（调用方应跳过阈值过滤）。
     """
     if not papers:
-        return []
+        return [], True
 
     texts = [f"{p.get('title', '')} {(p.get('abstract') or '')[:500]}" for p in papers]
 
@@ -400,14 +402,15 @@ def _score_papers(papers: list[dict], query: str, cfg) -> list[dict]:
         scores = paper_norms @ query_norm
 
         scored = [{**p, "relevance_score": float(s)} for p, s in zip(papers, scores)]
+        return sorted(scored, key=lambda p: p.get("relevance_score", 0), reverse=True), True
     except ImportError:
-        _log.warning("语义评分不可用（缺少 embed 依赖），使用默认分数 0.5")
+        _log.warning("语义评分不可用（缺少 embed 依赖），跳过阈值过滤")
         scored = [{**p, "relevance_score": 0.5} for p in papers]
     except Exception as e:
-        _log.warning("语义评分失败（%s），使用默认分数 0.5", e)
+        _log.warning("语义评分失败（%s），跳过阈值过滤", e)
         scored = [{**p, "relevance_score": 0.5} for p in papers]
 
-    return sorted(scored, key=lambda p: p.get("relevance_score", 0), reverse=True)
+    return scored, False
 
 
 # ============================================================================
@@ -590,16 +593,18 @@ def run_notify(ws_dir: Path, cfg, *, dry_run: bool = False) -> dict:
     new_papers = deduped if dry_run else _filter_seen(deduped, db_path, ws_name)
 
     # --- Relevance scoring ---
+    real_scores = False
     if query:
-        scored = _score_papers(new_papers, query, cfg)
+        scored, real_scores = _score_papers(new_papers, query, cfg)
     else:
         # No query: assign neutral score so renderer shows consistent output
         scored = [{**p, "relevance_score": 0.5} for p in new_papers]
 
     # --- Threshold filter + top-N ---
-    # When there is no query the scores are all 0.5; skip threshold filtering
-    # so results are not unexpectedly suppressed by the user's threshold setting.
-    if query:
+    # Skip threshold when: no query, or embedding fell back to uniform scores
+    # (real_scores=False).  Applying threshold to fallback 0.5 scores would
+    # suppress everything when the default threshold (0.65) is in effect.
+    if query and real_scores:
         filtered = [p for p in scored if p.get("relevance_score", 0.5) >= threshold]
     else:
         filtered = scored
@@ -657,6 +662,7 @@ def run_notify(ws_dir: Path, cfg, *, dry_run: bool = False) -> dict:
         "n_fetched": n_fetched,
         "n_new": n_new,
         "n_sent": n_sent,
+        "n_channels": len(channels),
         # In dry-run mode the dated archive file is not written; return draft_path
         # so callers always receive a path that actually exists on disk.
         "digest_path": str(draft_path if dry_run else digest_path),
@@ -712,6 +718,13 @@ def _cron_to_systemd_calendar(cron: str) -> str:
         return "weekly"
 
     minute, hour, dom, month, dow = parts
+
+    # Only handle plain numeric (or *) minute/hour; ranges/steps are unsupported.
+    if not minute.isdigit() and minute != "*":
+        return "weekly"
+    if not hour.isdigit() and hour != "*":
+        return "weekly"
+
     day_map = {
         "0": "Sun",
         "7": "Sun",
@@ -724,8 +737,8 @@ def _cron_to_systemd_calendar(cron: str) -> str:
     }
 
     if dom == "*" and month == "*":
-        h = hour.zfill(2)
-        m = minute.zfill(2)
+        h = "*" if hour == "*" else hour.zfill(2)
+        m = "*" if minute == "*" else minute.zfill(2)
         if dow in day_map:
             return f"{day_map[dow]} *-*-* {h}:{m}:00"
         if dow == "*":

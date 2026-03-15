@@ -55,6 +55,8 @@ mcp = [
 ]
 notify = [
     "apprise>=1.7",
+    # For semantic relevance scoring install scholaraio[embed] as well.
+    # Without it, papers are still delivered but scored uniformly (threshold skipped).
 ]
 full = [
     "scholaraio[embed]",

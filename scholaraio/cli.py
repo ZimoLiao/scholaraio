@@ -1445,6 +1445,7 @@ def cmd_notify(args: argparse.Namespace, cfg) -> None:
         ui(f"\n预览摘要效果: scholaraio notify run {args.name} --dry-run")
 
     elif action == "run":
+        _validate_notify_name(args.name)
         ws_dir = ws_root / args.name
         if not (ws_dir / "notify.json").exists():
             ui(f"错误: 通知任务不存在: {args.name}")
@@ -1466,6 +1467,8 @@ def cmd_notify(args: argparse.Namespace, cfg) -> None:
             ui("  本期无新论文")
         elif result["failed_channels"]:
             ui(f"  推送失败频道: {result['failed_channels']}")
+        elif result["n_channels"] == 0:
+            ui("  仅保存到文件（未配置推送频道）")
         else:
             ui(f"  已推送: {result['n_sent']} 篇")
 
@@ -1512,6 +1515,7 @@ def cmd_notify(args: argparse.Namespace, cfg) -> None:
         ui(f"查看日志: journalctl --user -u scholaraio-notify-{ws_name}.service")
 
     elif action == "history":
+        _validate_notify_name(args.name)
         records = notify.get_digest_history(cfg.index_db, args.name, limit=args.last)
         if not records:
             ui(f"暂无推送历史: {args.name}")

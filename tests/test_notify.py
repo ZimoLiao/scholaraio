@@ -272,6 +272,20 @@ class TestSystemd:
         result = _cron_to_systemd_calendar("@weekly")
         assert result == "weekly"
 
+    def test_cron_step_minute_falls_back(self):
+        # */15 is not a plain integer — must fall back, not emit invalid calendar
+        result = _cron_to_systemd_calendar("*/15 8 * * *")
+        assert result == "weekly"
+
+    def test_cron_step_hour_falls_back(self):
+        result = _cron_to_systemd_calendar("0 */2 * * *")
+        assert result == "weekly"
+
+    def test_cron_wildcard_minute_and_hour(self):
+        # "* * * * *" — both plain "*" fields pass through unchanged
+        result = _cron_to_systemd_calendar("* * * * *")
+        assert result == "*-*-* *:*:00"
+
     def test_generate_units_content(self, tmp_path):
         ws_dir = tmp_path / "protein-watch"
         init_notify(ws_dir, query="protein folding", schedule="0 8 * * 1")
