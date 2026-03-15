@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sqlite3
+import time
 import uuid as _uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -187,22 +189,31 @@ def init_notify(
     ws_dir: Path,
     *,
     query: str,
-    schedule: str = "0 8 * * 1",
+    schedule: str | None = None,
     channels: list[str] | None = None,
     sources: list[str] | None = None,
-    relevance_threshold: float = 0.65,
-    max_papers: int = 10,
+    relevance_threshold: float | None = None,
+    max_papers: int | None = None,
 ) -> dict:
     """创建或更新工作区的 notify.json 配置。
 
+    ``None`` 表示"保留现有值"：仅 ``query`` 是必填项，其余参数缺省时不会
+    覆盖已有 notify.json 中的配置。新建任务时采用以下默认值：
+
+    - schedule: ``"0 8 * * 1"``（每周一 08:00）
+    - channels: ``[]``
+    - sources: ``["openalex"]``
+    - relevance_threshold: ``0.65``
+    - max_papers: ``10``
+
     Args:
         ws_dir: 工作区目录路径。
-        query: 感兴趣的研究描述，用于语义相关性评分。
-        schedule: Cron 表达式（5 字段），默认每周一上午 8 点。
-        channels: Apprise URL 列表（Telegram/邮件/Slack 等）。
-        sources: 论文来源列表，支持 ``"openalex"`` 和 ``"library"``。
-        relevance_threshold: 最低相关性分数（0-1），低于此值的论文不纳入摘要。
-        max_papers: 每次摘要最多收录论文数。
+        query: 感兴趣的研究描述，用于语义相关性评分（必填，始终更新）。
+        schedule: Cron 表达式（5 字段）；``None`` 保留现有值或使用默认值。
+        channels: Apprise URL 列表；``None`` 保留现有值（传 ``[]`` 可清空）。
+        sources: 论文来源列表；``None`` 保留现有值。
+        relevance_threshold: 最低相关性分数（0-1）；``None`` 保留现有值。
+        max_papers: 每次摘要最多收录论文数；``None`` 保留现有值。
 
     Returns:
         最终 notify.json 内容字典。
@@ -214,17 +225,29 @@ def init_notify(
     if notify_json.exists():
         config = json.loads(notify_json.read_text(encoding="utf-8"))
 
-    config.update(
-        {
-            "interest_query": query,
-            "sources": sources or ["openalex"],
-            "schedule": schedule,
-            "relevance_threshold": relevance_threshold,
-            "max_papers": max_papers,
-            "channels": channels or [],
-            "digest_format": "markdown",
-        }
-    )
+    # query is always updated; other fields only override if explicitly provided.
+    config["interest_query"] = query
+    config["digest_format"] = "markdown"
+    if schedule is not None:
+        config["schedule"] = schedule
+    elif "schedule" not in config:
+        config["schedule"] = "0 8 * * 1"
+    if channels is not None:
+        config["channels"] = channels
+    elif "channels" not in config:
+        config["channels"] = []
+    if sources is not None:
+        config["sources"] = sources
+    elif "sources" not in config:
+        config["sources"] = ["openalex"]
+    if relevance_threshold is not None:
+        config["relevance_threshold"] = relevance_threshold
+    elif "relevance_threshold" not in config:
+        config["relevance_threshold"] = 0.65
+    if max_papers is not None:
+        config["max_papers"] = max_papers
+    elif "max_papers" not in config:
+        config["max_papers"] = 10
     if "last_run" not in config:
         config["last_run"] = None
 
@@ -270,17 +293,33 @@ def _fetch_openalex_recent(
         ),
     }
 
-    try:
-        resp = requests.get(
-            "https://api.openalex.org/works",
-            params=params,
-            headers={"User-Agent": "ScholarAIO/1.0 (mailto:notify@scholaraio.dev)"},
-            timeout=30,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-    except Exception as e:
-        _log.error("OpenAlex 请求失败: %s", e)
+    # Retry with exponential backoff (mirrors explore._fetch_page logic).
+    _headers = {"User-Agent": "ScholarAIO/1.0 (mailto:notify@scholaraio.dev)"}
+    last_exc: Exception | None = None
+    data: dict = {}
+    for attempt in range(3):
+        try:
+            resp = requests.get(
+                "https://api.openalex.org/works",
+                params=params,
+                headers=_headers,
+                timeout=30,
+            )
+            if resp.status_code == 429:
+                wait = 2**attempt
+                _log.warning("OpenAlex 429 rate limit, retrying in %ds", wait)
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            data = resp.json()
+            break
+        except (requests.ConnectionError, requests.Timeout) as e:
+            last_exc = e
+            wait = 2**attempt
+            _log.warning("OpenAlex 请求失败 (attempt %d/3): %s, retrying in %ds", attempt + 1, e, wait)
+            time.sleep(wait)
+    else:
+        _log.error("OpenAlex 请求最终失败: %s", last_exc)
         return []
 
     results: list[dict] = []
@@ -307,10 +346,14 @@ def _fetch_openalex_recent(
 
         venue = ((work.get("primary_location") or {}).get("source") or {}).get("display_name", "")
 
+        # Strip HTML tags OpenAlex sometimes includes in titles (<b>, <i>, <scp>, …)
+        raw_title = work.get("title") or ""
+        clean_title = re.sub(r"<[^>]+>", "", raw_title)
+
         results.append(
             {
                 "doi": doi,
-                "title": work.get("title") or "",
+                "title": clean_title,
                 "authors": authors,
                 "year": work.get("publication_year"),
                 "date": work.get("publication_date") or "",
@@ -663,6 +706,8 @@ def run_notify(ws_dir: Path, cfg, *, dry_run: bool = False) -> dict:
         "n_new": n_new,
         "n_sent": n_sent,
         "n_channels": len(channels),
+        # True only when real embeddings were used AND threshold was applied.
+        "threshold_applied": bool(query and real_scores),
         # In dry-run mode the dated archive file is not written; return draft_path
         # so callers always receive a path that actually exists on disk.
         "digest_path": str(draft_path if dry_run else digest_path),

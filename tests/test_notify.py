@@ -61,6 +61,21 @@ class TestInitNotify:
         # last_run preserved (still None since never set)
         assert config["last_run"] is None
 
+    def test_partial_update_preserves_channels_and_schedule(self, tmp_path):
+        """Re-init with only query changed must not clear channels/schedule."""
+        ws_dir = tmp_path / "my-watch"
+        init_notify(
+            ws_dir,
+            query="original",
+            channels=["tgram://TOKEN/123"],
+            schedule="0 9 * * *",
+        )
+        # Re-init updating only query; channels/schedule not passed → preserved
+        config = init_notify(ws_dir, query="updated query")
+        assert config["channels"] == ["tgram://TOKEN/123"]
+        assert config["schedule"] == "0 9 * * *"
+        assert config["interest_query"] == "updated query"
+
     def test_preserves_last_run_on_update(self, tmp_path):
         ws_dir = tmp_path / "my-watch"
         init_notify(ws_dir, query="q1")

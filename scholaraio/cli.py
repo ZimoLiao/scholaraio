@@ -1423,18 +1423,19 @@ def cmd_notify(args: argparse.Namespace, cfg) -> None:
 
     if action == "init":
         _validate_notify_name(args.name)
-        channels = args.channel or []
         ws_dir = ws_root / args.name
-        # Apply global NotifyConfig defaults when arg was not explicitly provided
-        nc = cfg.notify
+        # Pass None for optional fields that were not supplied so init_notify()
+        # preserves existing notify.json values (e.g. "re-init to update query
+        # only" must not silently clear channels/schedule).
+        # init_notify() applies built-in defaults for genuinely new tasks.
         config = notify.init_notify(
             ws_dir,
             query=args.query,
-            schedule=args.schedule if args.schedule is not None else nc.default_schedule,
-            channels=channels,
-            sources=args.sources or list(nc.default_sources),
-            relevance_threshold=args.threshold if args.threshold is not None else nc.default_threshold,
-            max_papers=args.max_papers if args.max_papers is not None else nc.default_max_papers,
+            schedule=args.schedule,  # None → preserve / built-in default
+            channels=args.channel,  # None → preserve; [] would clear
+            sources=args.sources,  # None → preserve / built-in default
+            relevance_threshold=args.threshold,
+            max_papers=args.max_papers,
         )
         ui(f"通知任务已创建: {ws_dir}")
         ui(f"  兴趣查询: {config['interest_query']}")
@@ -1458,8 +1459,9 @@ def cmd_notify(args: argparse.Namespace, cfg) -> None:
 
         result = notify.run_notify(ws_dir, cfg, dry_run=dry_run)
 
+        filter_note = " (语义评分 + 阈值过滤)" if result["threshold_applied"] else ""
         ui(f"\n  拉取: {result['n_fetched']} 篇")
-        ui(f"  新增: {result['n_new']} 篇 (阈值过滤后)")
+        ui(f"  新增: {result['n_new']} 篇{filter_note}")
         ui(f"  摘要: {result['digest_path']}")
         if dry_run:
             ui("  dry-run 模式: 未推送，未更新 last_run")
