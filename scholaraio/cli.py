@@ -165,6 +165,7 @@ def _check_import_error(e: ImportError) -> None:
 
 def cmd_index(args: argparse.Namespace, cfg) -> None:
     from scholaraio.index import build_index
+    from scholaraio.vectors import build_chunk_vectors
 
     papers_dir = cfg.papers_dir
     db_path = cfg.index_db
@@ -177,6 +178,12 @@ def cmd_index(args: argparse.Namespace, cfg) -> None:
     ui(f"{action}: {papers_dir} -> {db_path}")
     count = build_index(papers_dir, db_path, rebuild=args.rebuild)
     ui(f"完成：已索引 {count} 篇论文。")
+    if getattr(args, "chunks", False):
+        c_action = "重建段落向量索引" if args.rebuild else "更新段落向量索引"
+        ui(f"{c_action}: {papers_dir} -> {db_path}")
+        c_count = build_chunk_vectors(papers_dir, db_path, rebuild=args.rebuild, cfg=cfg)
+        c_label = "总计" if args.rebuild else "新增/更新"
+        ui(f"完成：{c_label} {c_count} 个段落块向量。")
     ui("下一步：运行 `scholaraio search <关键词>` 或 `scholaraio usearch <关键词>` 开始检索。")
 
 
@@ -212,33 +219,49 @@ def cmd_search(args: argparse.Namespace, cfg) -> None:
 
     from scholaraio.index import search
     from scholaraio.metrics import get_store
+    from scholaraio.vectors import chunk_search
 
     query = " ".join(args.query)
     t0 = time.monotonic()
     try:
-        results = search(
-            query,
-            cfg.index_db,
-            top_k=_resolve_top(args, cfg.search.top_k),
-            year=args.year,
-            journal=args.journal,
-            paper_type=args.paper_type,
-        )
+        if getattr(args, "chunk", False):
+            results = chunk_search(
+                query,
+                cfg.index_db,
+                top_k=_resolve_top(args, cfg.search.top_k),
+                cfg=cfg,
+                aggregate=getattr(args, "aggregate", False),
+            )
+        else:
+            results = search(
+                query,
+                cfg.index_db,
+                top_k=_resolve_top(args, cfg.search.top_k),
+                year=args.year,
+                journal=args.journal,
+                paper_type=args.paper_type,
+            )
     except FileNotFoundError as e:
         _log.error("%s", e)
         sys.exit(1)
 
     elapsed = time.monotonic() - t0
     store = get_store()
-    _record_search_metrics(store, "search", query, results, elapsed, args)
+    _record_search_metrics(store, "chunk_search" if getattr(args, "chunk", False) else "search", query, results, elapsed, args)
 
     if not results:
         ui(f'未找到与 "{query}" 相关的结果。')
         return
 
-    ui(f'关键词检索到 {len(results)} 篇论文（"{query}"）:\n')
-    for i, r in enumerate(results, start=1):
-        _print_search_result(i, r)
+    if getattr(args, "chunk", False):
+        ui(f'段落检索到 {len(results)} 条结果（"{query}"）:\n')
+        for i, r in enumerate(results, start=1):
+            loc = f"{r.get('section_title') or '未命名章节'} L{r.get('start_line')}-{r.get('end_line')}"
+            _print_search_result(i, r, extra=f"{loc} | 分数: {r.get('score', 0.0):.3f}")
+    else:
+        ui(f'关键词检索到 {len(results)} 篇论文（"{query}"）:\n')
+        for i, r in enumerate(results, start=1):
+            _print_search_result(i, r)
     _print_search_next_steps()
 
 
@@ -2746,12 +2769,15 @@ def main() -> None:
     p_index = sub.add_parser("index", help="构建 FTS5 检索索引")
     p_index.set_defaults(func=cmd_index)
     p_index.add_argument("--rebuild", action="store_true", help="清空后重建")
+    p_index.add_argument("--chunks", action="store_true", help="同时构建段落级向量索引")
 
     # --- search ---
     p_search = sub.add_parser("search", help="关键词检索")
     p_search.set_defaults(func=cmd_search)
     p_search.add_argument("query", nargs="+", help="检索词")
     p_search.add_argument("--top", type=int, default=None, help="最多返回 N 条（默认读 config search.top_k）")
+    p_search.add_argument("--chunk", action="store_true", help="启用段落级语义检索")
+    p_search.add_argument("--aggregate", action="store_true", help="段落检索时按论文聚合")
     _add_filter_args(p_search)
 
     # --- search-author ---

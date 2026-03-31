@@ -18,6 +18,7 @@ import importlib
 import json
 import logging
 import os
+import re
 import sqlite3
 import struct
 import time
@@ -459,15 +460,15 @@ def _unpack(blob: bytes) -> list[float]:
     return list(struct.unpack(f"{n}f", blob))
 
 
-def _faiss_paths(db_path: Path) -> tuple[Path, Path]:
+def _faiss_paths(db_path: Path, *, prefix: str = "faiss") -> tuple[Path, Path]:
     """Return (faiss_index_path, faiss_ids_path) next to the db file."""
     parent = db_path.parent
-    return parent / "faiss.index", parent / "faiss_ids.json"
+    return parent / f"{prefix}.index", parent / f"{prefix}_ids.json"
 
 
-def _invalidate_faiss(db_path: Path) -> None:
+def _invalidate_faiss(db_path: Path, *, prefix: str = "faiss") -> None:
     """Delete cached FAISS index files so next search rebuilds them."""
-    for p in _faiss_paths(db_path):
+    for p in _faiss_paths(db_path, prefix=prefix):
         p.unlink(missing_ok=True)
 
 
@@ -628,6 +629,336 @@ def build_vectors(papers_dir: Path, db_path: Path, rebuild: bool = False, cfg: C
 
 
 # ============================================================================
+#  Chunk Build
+# ============================================================================
+
+
+def _chunk_content_hash(paper_id: str, section_title: str, start_line: int, end_line: int, text: str) -> str:
+    payload = f"{paper_id}\n{section_title}\n{start_line}\n{end_line}\n{text}"
+    return hashlib.md5(payload.encode("utf-8")).hexdigest()
+
+
+def _heading_sections(lines: list[str]) -> list[tuple[str, int, int]]:
+    """Fallback section split from markdown headings, line numbers are 1-based."""
+    heading_pat = re.compile(r"^\s*#{1,6}\s+(.+?)\s*$")
+    headers: list[tuple[int, str]] = []
+    for i, line in enumerate(lines, start=1):
+        m = heading_pat.match(line)
+        if m:
+            headers.append((i, m.group(1).strip()))
+
+    if not headers:
+        return [("全文", 1, len(lines))]
+
+    sections: list[tuple[str, int, int]] = []
+    for idx, (line_no, title) in enumerate(headers):
+        end_line = headers[idx + 1][0] - 1 if idx + 1 < len(headers) else len(lines)
+        if end_line >= line_no:
+            sections.append((title or "未命名章节", line_no, end_line))
+    return sections
+
+
+def _toc_sections(meta: dict, lines: list[str]) -> list[tuple[str, int, int]]:
+    """Split sections by meta['toc'] when available, line numbers are 1-based."""
+    toc = meta.get("toc")
+    if not isinstance(toc, list):
+        return []
+
+    entries: list[tuple[int, str]] = []
+    for item in toc:
+        if not isinstance(item, dict):
+            continue
+        line_no = item.get("line")
+        title = str(item.get("title") or "").strip()
+        if not isinstance(line_no, int) or line_no < 1 or line_no > len(lines):
+            continue
+        if not title:
+            title = "未命名章节"
+        entries.append((line_no, title))
+
+    if not entries:
+        return []
+
+    entries = sorted(set(entries), key=lambda x: x[0])
+    sections: list[tuple[str, int, int]] = []
+    if entries[0][0] > 1:
+        sections.append(("前言", 1, entries[0][0] - 1))
+    for idx, (line_no, title) in enumerate(entries):
+        end_line = entries[idx + 1][0] - 1 if idx + 1 < len(entries) else len(lines)
+        if end_line >= line_no:
+            sections.append((title, line_no, end_line))
+    return sections
+
+
+def _best_split_line(slice_lines: list[str], start_idx: int, end_idx: int) -> int:
+    """Find a preferred split line near the end; indices are 0-based and inclusive."""
+    tail_start = max(start_idx, end_idx - 8)
+    sentence_pat = re.compile(r"[。！？.!?][\s\"'”’）)]*$")
+    for i in range(end_idx, tail_start - 1, -1):
+        text = slice_lines[i].strip()
+        if sentence_pat.search(text):
+            return i
+    for i in range(end_idx, tail_start - 1, -1):
+        if not slice_lines[i].strip():
+            return i
+    return end_idx
+
+
+def _split_large_section(
+    lines: list[str],
+    section_title: str,
+    start_line: int,
+    end_line: int,
+    *,
+    max_lines: int = 120,
+) -> list[tuple[str, int, int, str]]:
+    """Split section into chunk windows; uses sentence-boundary fallback."""
+    slice_lines = lines[start_line - 1 : end_line]
+    if not slice_lines:
+        return []
+
+    chunks: list[tuple[str, int, int, str]] = []
+    i = 0
+    while i < len(slice_lines):
+        j = min(i + max_lines - 1, len(slice_lines) - 1)
+        if j < len(slice_lines) - 1:
+            j = _best_split_line(slice_lines, i, j)
+        c_start = start_line + i
+        c_end = start_line + j
+        text = "\n".join(slice_lines[i : j + 1]).strip()
+        if text:
+            chunks.append((section_title, c_start, c_end, text))
+        i = j + 1
+    return chunks
+
+
+def _iter_chunks(meta: dict, md_text: str) -> list[tuple[str, int, int, str]]:
+    lines = md_text.splitlines()
+    if not lines:
+        return []
+
+    sections = _toc_sections(meta, lines)
+    if not sections:
+        sections = _heading_sections(lines)
+
+    chunks: list[tuple[str, int, int, str]] = []
+    for section_title, start_line, end_line in sections:
+        chunks.extend(_split_large_section(lines, section_title, start_line, end_line))
+    return chunks
+
+
+def _build_chunk_faiss_index(db_path: Path) -> tuple[faiss.Index, list[str]]:
+    """Build/load FAISS for chunk_vectors table."""
+    idx_p, ids_p = _faiss_paths(db_path, prefix="chunk_faiss")
+    return _build_faiss_from_db(
+        db_path,
+        idx_p,
+        ids_p,
+        empty_msg="段落向量索引为空，请先运行 `scholaraio index --chunks`",
+        table_name="chunk_vectors",
+        id_column="chunk_id",
+    )
+
+
+def build_chunk_vectors(papers_dir: Path, db_path: Path, rebuild: bool = False, cfg: Config | None = None) -> int:
+    """Build paragraph/section chunk vectors in ``chunk_vectors`` table."""
+    from scholaraio.papers import iter_paper_dirs, read_meta
+
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chunk_vectors (
+                chunk_id       TEXT PRIMARY KEY,
+                paper_id       TEXT NOT NULL,
+                section_title  TEXT,
+                start_line     INTEGER NOT NULL,
+                end_line       INTEGER NOT NULL,
+                content_hash   TEXT NOT NULL,
+                embedding      BLOB NOT NULL
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_chunk_vectors_paper_id ON chunk_vectors(paper_id)")
+        if rebuild:
+            conn.execute("DELETE FROM chunk_vectors")
+
+        existing_hashes: dict[str, str] = {}
+        if not rebuild:
+            for row in conn.execute("SELECT chunk_id, content_hash FROM chunk_vectors").fetchall():
+                existing_hashes[row[0]] = row[1]
+
+        to_embed: list[tuple[str, str, str, int, int, str]] = []
+        paper_chunk_ids: dict[str, list[str]] = {}
+        for pdir in iter_paper_dirs(papers_dir):
+            try:
+                meta = read_meta(pdir)
+            except (ValueError, FileNotFoundError) as e:
+                _log.debug("failed to read meta.json in %s: %s", pdir.name, e)
+                continue
+            paper_id = meta.get("id") or pdir.name
+            md_path = pdir / "paper.md"
+            if not md_path.exists():
+                continue
+
+            chunks = _iter_chunks(meta, md_path.read_text(encoding="utf-8", errors="replace"))
+            new_chunk_ids: list[str] = []
+            for seq, (section_title, start_line, end_line, text) in enumerate(chunks, start=1):
+                chunk_id = f"{paper_id}:{seq}"
+                new_chunk_ids.append(chunk_id)
+                h = _chunk_content_hash(paper_id, section_title, start_line, end_line, text)
+                if not rebuild and existing_hashes.get(chunk_id) == h:
+                    continue
+                to_embed.append((chunk_id, paper_id, section_title, start_line, end_line, h, text))
+            paper_chunk_ids[paper_id] = new_chunk_ids
+
+        if not to_embed:
+            stale_removed = False
+            if not rebuild:
+                for paper_id, expected_ids in paper_chunk_ids.items():
+                    existing_ids = [
+                        r[0] for r in conn.execute("SELECT chunk_id FROM chunk_vectors WHERE paper_id = ?", (paper_id,)).fetchall()
+                    ]
+                    stale_ids = set(existing_ids) - set(expected_ids)
+                    if stale_ids:
+                        conn.executemany("DELETE FROM chunk_vectors WHERE chunk_id = ?", [(cid,) for cid in stale_ids])
+                        stale_removed = True
+                if stale_removed:
+                    conn.commit()
+            if stale_removed:
+                _invalidate_faiss(db_path, prefix="chunk_faiss")
+            return 0
+
+        texts = [row[6] for row in to_embed]
+        vecs = _embed_batch(texts, cfg)
+
+        updated = False
+        new_ids: list[str] = []
+        new_vecs_raw: list[list[float]] = []
+        touched_papers = {row[1] for row in to_embed}
+        for (chunk_id, paper_id, section_title, start_line, end_line, h, _), vec in zip(to_embed, vecs):
+            if chunk_id in existing_hashes:
+                updated = True
+            conn.execute(
+                """INSERT OR REPLACE INTO chunk_vectors
+                   (chunk_id, paper_id, section_title, start_line, end_line, content_hash, embedding)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (chunk_id, paper_id, section_title, start_line, end_line, h, _pack(vec)),
+            )
+            new_ids.append(chunk_id)
+            new_vecs_raw.append(vec)
+
+        # Remove stale chunks for touched papers
+        for paper_id in touched_papers:
+            existing_ids = [r[0] for r in conn.execute("SELECT chunk_id FROM chunk_vectors WHERE paper_id = ?", (paper_id,)).fetchall()]
+            stale_ids = set(existing_ids) - set(paper_chunk_ids.get(paper_id, []))
+            if stale_ids:
+                updated = True
+                conn.executemany("DELETE FROM chunk_vectors WHERE chunk_id = ?", [(cid,) for cid in stale_ids])
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    if updated:
+        _invalidate_faiss(db_path, prefix="chunk_faiss")
+    else:
+        try:
+            _append_faiss_files(
+                *_faiss_paths(db_path, prefix="chunk_faiss"),
+                new_ids,
+                new_vecs_raw,
+            )
+        except ImportError:
+            _log.debug("faiss is unavailable, skip incremental chunk FAISS append")
+    return len(to_embed)
+
+
+def chunk_search(
+    query: str,
+    db_path: Path,
+    top_k: int = 10,
+    cfg: Config | None = None,
+    *,
+    aggregate: bool = False,
+) -> list[dict]:
+    """Search chunk-level semantic vectors."""
+    if not db_path.exists():
+        raise FileNotFoundError(f"索引文件不存在：{db_path}\n请先运行 `scholaraio index`")
+
+    conn = sqlite3.connect(db_path)
+    try:
+        has_vectors = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='chunk_vectors'"
+        ).fetchone()
+        if not has_vectors:
+            raise FileNotFoundError("段落向量索引不存在，请先运行 `scholaraio index --chunks`")
+    finally:
+        conn.close()
+
+    index, chunk_ids = _build_chunk_faiss_index(db_path)
+    hits = _vsearch_faiss(query, index, chunk_ids, top_k * 5 if aggregate else top_k, cfg=cfg)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.row_factory = sqlite3.Row
+        meta_rows = conn.execute(
+            """
+            SELECT chunk_id, paper_id, section_title, start_line, end_line
+            FROM chunk_vectors
+            """
+        ).fetchall()
+        meta_map = {r["chunk_id"]: dict(r) for r in meta_rows}
+        paper_meta: dict[str, dict] = {}
+        has_fts = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='papers'").fetchone()
+        if has_fts:
+            for row in conn.execute("SELECT paper_id, title, authors, year, journal, citation_count FROM papers").fetchall():
+                paper_meta[row["paper_id"]] = dict(row)
+        dir_map: dict[str, str] = {}
+        has_reg = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='papers_registry'").fetchone()
+        if has_reg:
+            for row in conn.execute("SELECT id, dir_name FROM papers_registry").fetchall():
+                dir_map[row["id"]] = row["dir_name"]
+    finally:
+        conn.close()
+
+    results: list[dict] = []
+    for chunk_id, score in hits:
+        m = meta_map.get(chunk_id)
+        if not m:
+            continue
+        pmeta = paper_meta.get(m["paper_id"], {})
+        results.append(
+            {
+                "chunk_id": chunk_id,
+                "paper_id": m["paper_id"],
+                "dir_name": dir_map.get(m["paper_id"], ""),
+                "title": pmeta.get("title") or m["paper_id"],
+                "authors": pmeta.get("authors") or "",
+                "year": pmeta.get("year") or "",
+                "journal": pmeta.get("journal") or "",
+                "citation_count": pmeta.get("citation_count") or "",
+                "section_title": m["section_title"] or "",
+                "start_line": int(m["start_line"]),
+                "end_line": int(m["end_line"]),
+                "score": float(score),
+            }
+        )
+
+    if not aggregate:
+        return results[:top_k]
+
+    best_by_paper: dict[str, dict] = {}
+    for r in results:
+        pid = r["paper_id"]
+        prev = best_by_paper.get(pid)
+        if prev is None or r["score"] > prev["score"]:
+            best_by_paper[pid] = r
+    aggregated = sorted(best_by_paper.values(), key=lambda x: x["score"], reverse=True)
+    return aggregated[:top_k]
+
+
+# ============================================================================
 #  Search
 # ============================================================================
 
@@ -638,6 +969,8 @@ def _build_faiss_from_db(
     ids_path: Path,
     *,
     empty_msg: str = "向量索引为空，请先运行 `scholaraio embed`",
+    table_name: str = "paper_vectors",
+    id_column: str = "paper_id",
 ) -> tuple[faiss.Index, list[str]]:
     """Build or load a FAISS IndexFlatIP from a paper_vectors table.
 
@@ -645,10 +978,12 @@ def _build_faiss_from_db(
     ``paper_vectors`` table (main library or explore silo).
 
     Args:
-        db_path: SQLite database with ``paper_vectors`` table.
+        db_path: SQLite database with vector table.
         index_path: Path to cached ``faiss.index`` file.
         ids_path: Path to cached ``faiss_ids.json`` file.
         empty_msg: Error message when no vectors found.
+        table_name: Vector table name.
+        id_column: ID column name corresponding to each embedding row.
 
     Returns:
         ``(faiss_index, paper_ids)`` tuple.
@@ -666,7 +1001,7 @@ def _build_faiss_from_db(
 
     conn = sqlite3.connect(db_path)
     try:
-        rows = conn.execute("SELECT paper_id, embedding FROM paper_vectors").fetchall()
+        rows = conn.execute(f"SELECT {id_column}, embedding FROM {table_name}").fetchall()
     finally:
         conn.close()
 

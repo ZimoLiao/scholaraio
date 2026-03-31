@@ -86,6 +86,20 @@ _CITATIONS_IDX_TARGET_ID = (
     "CREATE INDEX IF NOT EXISTS idx_cit_target_id ON citations(target_id) WHERE target_id IS NOT NULL;"
 )
 
+_CHUNK_VECTORS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS chunk_vectors (
+    chunk_id       TEXT PRIMARY KEY,
+    paper_id       TEXT NOT NULL,
+    section_title  TEXT,
+    start_line     INTEGER NOT NULL,
+    end_line       INTEGER NOT NULL,
+    content_hash   TEXT NOT NULL,
+    embedding      BLOB NOT NULL
+);
+"""
+
+_CHUNK_VECTORS_PAPER_IDX = "CREATE INDEX IF NOT EXISTS idx_chunk_vectors_paper_id ON chunk_vectors(paper_id);"
+
 
 def _index_hash(meta: dict) -> str:
     """Compute a short hash of the fields indexed in FTS5."""
@@ -136,6 +150,7 @@ def build_index(papers_dir: Path, db_path: Path, rebuild: bool = False) -> int:
         conn.execute(_HASH_SCHEMA)
         conn.execute(_REGISTRY_SCHEMA)
         conn.execute(_CITATIONS_SCHEMA)
+        conn.execute(_CHUNK_VECTORS_SCHEMA)
         try:
             conn.execute(_REGISTRY_DOI_INDEX)
         except sqlite3.OperationalError:
@@ -173,6 +188,10 @@ def build_index(papers_dir: Path, db_path: Path, rebuild: bool = False) -> int:
             pass
         try:
             conn.execute(_CITATIONS_IDX_TARGET_ID)
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute(_CHUNK_VECTORS_PAPER_IDX)
         except sqlite3.OperationalError:
             pass
 
