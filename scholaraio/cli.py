@@ -58,6 +58,7 @@ from pathlib import Path
 
 from scholaraio.config import load_config
 from scholaraio.log import ui
+from scholaraio.vectors import _CHUNK_TITLE_UNTITLED
 
 _log = logging.getLogger(__name__)
 
@@ -256,7 +257,7 @@ def cmd_search(args: argparse.Namespace, cfg) -> None:
     if getattr(args, "chunk", False):
         ui(f'段落检索到 {len(results)} 条结果（"{query}"）:\n')
         for i, r in enumerate(results, start=1):
-            loc = f"{r.get('section_title') or '未命名章节'} L{r.get('start_line')}-{r.get('end_line')}"
+            loc = f"{r.get('section_title') or _CHUNK_TITLE_UNTITLED} L{r.get('start_line')}-{r.get('end_line')}"
             _print_search_result(i, r, extra=f"{loc} | 分数: {r.get('score', 0.0):.3f}")
     else:
         ui(f'关键词检索到 {len(results)} 篇论文（"{query}"）:\n')

@@ -26,6 +26,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 _log = logging.getLogger(__name__)
+_CHUNK_TITLE_FULL = "全文"
+_CHUNK_TITLE_UNTITLED = "未命名章节"
+_CHUNK_TITLE_PREFACE = "前言"
+_CHUNK_SENTENCE_SEARCH_WINDOW = 8
+_CHUNK_MAX_LINES = 120
 
 if TYPE_CHECKING:
     import faiss
@@ -648,13 +653,13 @@ def _heading_sections(lines: list[str]) -> list[tuple[str, int, int]]:
             headers.append((i, m.group(1).strip()))
 
     if not headers:
-        return [("全文", 1, len(lines))]
+        return [(_CHUNK_TITLE_FULL, 1, len(lines))]
 
     sections: list[tuple[str, int, int]] = []
     for idx, (line_no, title) in enumerate(headers):
         end_line = headers[idx + 1][0] - 1 if idx + 1 < len(headers) else len(lines)
         if end_line >= line_no:
-            sections.append((title or "未命名章节", line_no, end_line))
+            sections.append((title or _CHUNK_TITLE_UNTITLED, line_no, end_line))
     return sections
 
 
@@ -673,7 +678,7 @@ def _toc_sections(meta: dict, lines: list[str]) -> list[tuple[str, int, int]]:
         if not isinstance(line_no, int) or line_no < 1 or line_no > len(lines):
             continue
         if not title:
-            title = "未命名章节"
+            title = _CHUNK_TITLE_UNTITLED
         entries.append((line_no, title))
 
     if not entries:
@@ -682,7 +687,7 @@ def _toc_sections(meta: dict, lines: list[str]) -> list[tuple[str, int, int]]:
     entries = sorted(set(entries), key=lambda x: x[0])
     sections: list[tuple[str, int, int]] = []
     if entries[0][0] > 1:
-        sections.append(("前言", 1, entries[0][0] - 1))
+        sections.append((_CHUNK_TITLE_PREFACE, 1, entries[0][0] - 1))
     for idx, (line_no, title) in enumerate(entries):
         end_line = entries[idx + 1][0] - 1 if idx + 1 < len(entries) else len(lines)
         if end_line >= line_no:
@@ -692,7 +697,7 @@ def _toc_sections(meta: dict, lines: list[str]) -> list[tuple[str, int, int]]:
 
 def _best_split_line(slice_lines: list[str], start_idx: int, end_idx: int) -> int:
     """Find a preferred split line near the end; indices are 0-based and inclusive."""
-    tail_start = max(start_idx, end_idx - 8)
+    tail_start = max(start_idx, end_idx - _CHUNK_SENTENCE_SEARCH_WINDOW)
     sentence_pat = re.compile(r"[。！？.!?][\s\"'”’）)]*$")
     for i in range(end_idx, tail_start - 1, -1):
         text = slice_lines[i].strip()
@@ -710,7 +715,7 @@ def _split_large_section(
     start_line: int,
     end_line: int,
     *,
-    max_lines: int = 120,
+    max_lines: int = _CHUNK_MAX_LINES,
 ) -> list[tuple[str, int, int, str]]:
     """Split section into chunk windows; uses sentence-boundary fallback."""
     slice_lines = lines[start_line - 1 : end_line]
@@ -788,7 +793,7 @@ def build_chunk_vectors(papers_dir: Path, db_path: Path, rebuild: bool = False, 
             for row in conn.execute("SELECT chunk_id, content_hash FROM chunk_vectors").fetchall():
                 existing_hashes[row[0]] = row[1]
 
-        to_embed: list[tuple[str, str, str, int, int, str]] = []
+        to_embed: list[tuple[str, str, str, int, int, str, str]] = []
         paper_chunk_ids: dict[str, list[str]] = {}
         for pdir in iter_paper_dirs(papers_dir):
             try:
@@ -998,6 +1003,13 @@ def _build_faiss_from_db(
         index = faiss.read_index(str(index_path))
         paper_ids = json.loads(ids_path.read_text("utf-8"))
         return index, paper_ids
+
+    allowed_table_cols = {
+        "paper_vectors": {"paper_id"},
+        "chunk_vectors": {"chunk_id"},
+    }
+    if table_name not in allowed_table_cols or id_column not in allowed_table_cols[table_name]:
+        raise ValueError(f"unsupported vector table/column: {table_name}.{id_column}")
 
     conn = sqlite3.connect(db_path)
     try:

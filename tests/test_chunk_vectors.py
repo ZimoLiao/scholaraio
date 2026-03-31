@@ -44,7 +44,10 @@ class TestBuildChunkVectors:
         )
 
         db = tmp_path / "index.db"
-        monkeypatch.setattr("scholaraio.vectors._embed_batch", lambda texts, cfg=None: [[float(i + 1), 0.0] for i in range(len(texts))])
+        def _fake_embed_batch(texts, cfg=None):
+            return [[float((len(t) % 7) + 1), 0.0] for t in texts]
+
+        monkeypatch.setattr("scholaraio.vectors._embed_batch", _fake_embed_batch)
 
         count = build_chunk_vectors(papers_dir, db, cfg=None)
 
