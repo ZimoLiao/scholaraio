@@ -4,6 +4,9 @@ site_url: https://zimoliao.github.io/scholaraio/
 repo_url: https://github.com/zimoliao/scholaraio
 repo_name: zimoliao/scholaraio
 
+exclude_docs: |
+  development/
+
 theme:
   name: material
   palette:
