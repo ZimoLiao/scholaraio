@@ -12,6 +12,9 @@ cli.py — scholaraio 命令行入口
     scholaraio show <paper-id> [--layer 1|2|3|4]
     scholaraio enrich-toc [<paper-id> | --all] [--force] [--inspect]
     scholaraio enrich-l3 [<paper-id> | --all] [--force] [--inspect] [--max-retries N]
+    scholaraio diagram <paper-id> [--type TYPE] [--format FMT] [-o DIR] [--critic] [--critic-rounds N]
+    scholaraio diagram --from-text "..." [--type TYPE] [--format FMT] [-o DIR]
+    scholaraio diagram --from-ir <path> [--format FMT] [-o DIR]
     scholaraio top-cited [--limit N] [--year Y] [--journal J] [--type T]
     scholaraio refs <paper-id>
     scholaraio citing <paper-id>
@@ -37,6 +40,8 @@ cli.py — scholaraio 命令行入口
     scholaraio import-endnote <file.xml|file.ris> [--no-api] [--dry-run] [--no-convert]
     scholaraio import-zotero [--api-key KEY] [--library-id ID] [--local PATH] [--list-collections] ...
     scholaraio attach-pdf <paper-id> <path/to/paper.pdf>
+    scholaraio websearch <query> [--count N]
+    scholaraio webextract <url> [--pdf]
     scholaraio ingest-link <url> [<url> ...] [--dry-run] [--force] [--pdf] [--no-index] [--json]
     scholaraio citation-check [<file>] [--ws <workspace-name>]
     scholaraio proceedings apply-split <proceeding_dir> <split_plan.json>
@@ -1217,8 +1222,18 @@ def cmd_refetch(args: argparse.Namespace, cfg) -> None:
         _log.error("请指定 <paper-id> 或 --all")
         sys.exit(1)
 
+    references_only = bool(getattr(args, "references_only", False))
+
     # Filter: only papers missing citations or bibliographic details (unless --force)
-    if args.all and not args.force:
+    if args.all and references_only:
+        filtered = []
+        for jp in targets:
+            data = json.loads(jp.read_text(encoding="utf-8"))
+            if data.get("doi") and not (data.get("references") or []):
+                filtered.append(jp)
+        ui(f"共 {len(targets)} 篇，{len(filtered)} 篇需要补全 references")
+        targets = filtered
+    elif args.all and not args.force:
         filtered = []
         for jp in targets:
             data = json.loads(jp.read_text(encoding="utf-8"))
@@ -1258,6 +1273,8 @@ def cmd_refetch(args: argparse.Namespace, cfg) -> None:
 
     def _do_refetch(jp: Path) -> tuple[Path, bool | None]:
         try:
+            if references_only:
+                return jp, refetch_metadata(jp, references_only=True)
             return jp, refetch_metadata(jp)
         except Exception as e:
             _log.error("refetch 失败 %s: %s", jp.parent.name, e)
@@ -1854,6 +1871,131 @@ def _cmd_document_inspect(args: argparse.Namespace, cfg) -> None:
         _log.error("%s", e)
         sys.exit(1)
     print(result)
+
+
+def cmd_diagram(args: argparse.Namespace, cfg) -> None:
+    """论文/文字 → 可编辑科研图表（多后端渲染）。"""
+    from scholaraio.diagram import (
+        generate_diagram,
+        generate_diagram_from_text,
+        generate_diagram_with_critic,
+        render_ir,
+    )
+
+    out_dir = Path(args.output) if args.output else None
+    from_text = getattr(args, "from_text", None)
+    from_ir = getattr(args, "from_ir", None)
+
+    # Validate: need exactly one input source among paper_id / --from-text / --from-ir
+    sources = [bool(args.paper_id), bool(from_text), bool(from_ir)]
+    if sum(sources) != 1:
+        _log.error("请提供且仅提供一个输入来源：paper_id、--from-text 或 --from-ir")
+        sys.exit(1)
+
+    # Mode 1: 从已有 IR 文件直接渲染（Critic 不参与，因为无原文对照）
+    if from_ir:
+        ir_path = Path(from_ir)
+        if not ir_path.exists():
+            _log.error("IR 文件不存在: %s", ir_path)
+            sys.exit(1)
+        try:
+            ir = json.loads(ir_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            _log.error("IR 文件解析失败: %s", e)
+            sys.exit(1)
+        try:
+            out_path = render_ir(ir, args.format, out_path=_build_diagram_out_path(ir, args.format, out_dir))
+        except (ValueError, RuntimeError) as e:
+            _log.error("%s", e)
+            sys.exit(1)
+        ui(f"已生成: {out_path}")
+        _print_diagram_hint(args.format, out_path)
+        return
+
+    # Mode 2: 从文字描述生成（用于写作流程中的插图辅助）
+    if from_text:
+        try:
+            out_path = generate_diagram_from_text(
+                description=from_text,
+                diagram_type=args.type,
+                fmt=args.format,
+                cfg=cfg,
+                out_dir=out_dir,
+                dump_ir=args.dump_ir,
+            )
+            ui(f"已生成: {out_path}")
+            if not args.dump_ir:
+                _print_diagram_hint(args.format, out_path)
+        except (ValueError, RuntimeError) as e:
+            _log.error("%s", e)
+            sys.exit(1)
+        return
+
+    # Mode 3: 从论文提取（可选 Critic 闭环迭代）
+    paper_d = _resolve_paper(args.paper_id, cfg)
+    try:
+        if args.critic:
+            result = generate_diagram_with_critic(
+                paper_d=paper_d,
+                diagram_type=args.type,
+                fmt=args.format,
+                cfg=cfg,
+                out_dir=out_dir,
+                dump_ir=args.dump_ir,
+                max_rounds=args.critic_rounds,
+            )
+            out_path = result["out_path"]
+            critique_log = result["critique_log"]
+            ui(f"已生成: {out_path}")
+            if not args.dump_ir:
+                _print_diagram_hint(args.format, out_path)
+            if args.critic_rounds > 0:
+                ui(f"Critic 闭环完成，共 {len(critique_log)} 轮")
+                for c in critique_log:
+                    verdict = c.get("verdict", "unknown")
+                    issue_count = len(c.get("issues", []))
+                    ui(f"  轮次 {c.get('round', '?')}: verdict={verdict}, issues={issue_count}")
+        else:
+            out_path = generate_diagram(
+                paper_d=paper_d,
+                diagram_type=args.type,
+                fmt=args.format,
+                cfg=cfg,
+                out_dir=out_dir,
+                dump_ir=args.dump_ir,
+            )
+            ui(f"已生成: {out_path}")
+            if not args.dump_ir:
+                _print_diagram_hint(args.format, out_path)
+    except (ValueError, RuntimeError) as e:
+        _log.error("%s", e)
+        sys.exit(1)
+
+
+def _build_diagram_out_path(ir: dict, fmt: str, out_dir: Path | None) -> Path:
+    if out_dir is None:
+        out_dir = Path("workspace/figures")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    safe_title = re.sub(r"[^\w\-]", "_", ir.get("title", "diagram"))[:40]
+    return out_dir / f"diagram_{safe_title}.{fmt}"
+
+
+def _print_diagram_hint(fmt: str, out_path: Path) -> None:
+    if fmt == "svg":
+        dot_path = out_path.with_suffix(".dot")
+        ui(f"DOT 源码: {dot_path}")
+        ui("Beamer 插入代码:")
+        ui(r"  \begin{frame}")
+        ui(r"  \centering")
+        try:
+            display_path = out_path.resolve().relative_to(Path.cwd().resolve())
+        except ValueError:
+            display_path = out_path
+        ui(f"  \\includesvg[width=0.8\\columnwidth]{{{display_path}}}")
+        ui(r"  \end{frame}")
+        ui("注意: 编译时需带 -shell-escape 参数，且已安装 Inkscape")
+    elif fmt == "drawio":
+        ui("可用浏览器打开 https://app.diagrams.net 后导入编辑")
 
 
 def cmd_style(args: argparse.Namespace, cfg) -> None:
@@ -2588,9 +2730,83 @@ def _webextract_for_ingest_link(
     }
 
 
+def cmd_websearch(args: argparse.Namespace, cfg) -> None:
+    """实时网页搜索 (Bing via GUILessBingSearch)."""
+    from scholaraio.sources import webtools
+
+    query = " ".join(args.query)
+    count = args.count
+
+    try:
+        results = webtools.search_and_display(query, count=count, cfg=cfg)
+    except webtools.ServiceUnavailableError as e:
+        ui(f"错误: {e}")
+        ui("提示: 请确保 GUILessBingSearch 服务已启动")
+        ui("  安装: https://github.com/wszqkzqk/GUILessBingSearch")
+        ui("  启动: python guiless_bing_search.py")
+        sys.exit(1)
+    except webtools.WebSearchError as e:
+        ui(f"搜索失败: {e}")
+        sys.exit(1)
+
+    if not results:
+        return
+
+
+def _terminal_preview(text: str, *, max_chars: int) -> tuple[str, bool]:
+    body = (text or "").strip()
+    if not body:
+        return "", False
+    if max_chars < 1 or len(body) <= max_chars:
+        return body, False
+    return body[:max_chars].rstrip(), True
+
+
+def cmd_webextract(args: argparse.Namespace, cfg) -> None:
+    """网页内容提取 (qt-web-extractor)."""
+    from scholaraio.sources import webtools
+
+    url = args.url
+    pdf = args.pdf
+    full = getattr(args, "full", False)
+    max_chars = max(1, int(getattr(args, "max_chars", 4000) or 4000))
+
+    try:
+        result = webtools.extract_web(url, pdf=pdf, cfg=cfg)
+    except webtools.WebExtractServiceUnavailableError as e:
+        ui(f"错误: {e}")
+        ui("提示: 请确保 qt-web-extractor 服务已启动")
+        sys.exit(1)
+    except webtools.WebExtractError as e:
+        ui(f"提取失败: {e}")
+        sys.exit(1)
+
+    title = result.get("title", "")
+    text = result.get("text") or ""
+    text_body = text.strip()
+    error = str(result.get("error") or "").strip()
+
+    if error and not text_body:
+        ui(f"提取失败: {error}")
+        sys.exit(1)
+
+    if error:
+        ui(f"提取有警告: {error}")
+
+    ui(f"提取成功: {title or url}")
+    if not text_body:
+        return
+
+    output_text, truncated = (text_body, False) if full else _terminal_preview(text_body, max_chars=max_chars)
+    if output_text:
+        print(output_text)
+    if truncated:
+        ui(f"内容较长，已截断显示前 {len(output_text)} / {len(text_body)} 个字符；使用 --full 查看全文")
+
+
 def cmd_ingest_link(args: argparse.Namespace, cfg) -> None:
     from scholaraio.ingest.pipeline import run_pipeline
-    from scholaraio.sources.webtools import webextract
+    from scholaraio.sources import webtools
 
     urls = [u.strip() for u in args.urls if u.strip()]
     if not urls:
@@ -2610,6 +2826,9 @@ def cmd_ingest_link(args: argparse.Namespace, cfg) -> None:
     summaries: list[dict[str, str]] = []
     output_mode = redirect_console_ui(sys.stderr) if args.json else nullcontext()
 
+    def extract_for_ingest(url: str, *, pdf: bool | None = None) -> dict:
+        return webtools.extract_web(url, pdf=pdf, cfg=cfg)
+
     try:
         with output_mode, tempfile.TemporaryDirectory(prefix="scholaraio_link_") as tmpdir:
             ui(f"开始直接入库链接: {len(urls)} 个")
@@ -2621,7 +2840,7 @@ def cmd_ingest_link(args: argparse.Namespace, cfg) -> None:
 
             for idx, url in enumerate(urls, start=1):
                 pdf_mode = True if args.pdf else None
-                result = _webextract_for_ingest_link(url, pdf=pdf_mode, extractor=webextract)
+                result = _webextract_for_ingest_link(url, pdf=pdf_mode, extractor=extract_for_ingest)
                 source_url = (result.get("url") or url).strip()
                 error = (result.get("error") or "").strip()
                 text = result.get("text") or ""
@@ -3678,11 +3897,17 @@ def _build_parser() -> argparse.ArgumentParser:
     p_pipe.add_argument("--papers", help="papers 目录（默认配置值）")
 
     # --- refetch ---
-    p_refetch = sub.add_parser("refetch", help="重新查询 API 补全引用量等字段")
+    p_refetch = sub.add_parser("refetch", help="重新查询 API 补全引用量、references 等字段")
     p_refetch.set_defaults(func=cmd_refetch)
     p_refetch.add_argument("paper_id", nargs="?", help="论文 ID（目录名 / UUID / DOI；省略则需 --all）")
     p_refetch.add_argument("--all", action="store_true", help="补查所有缺失引用量的论文")
     p_refetch.add_argument("--force", action="store_true", help="强制重新查询（包括已有引用量的论文）")
+    p_refetch.add_argument(
+        "--references-only",
+        "--refs-only",
+        action="store_true",
+        help="仅补 references 为空的 DOI 论文；单篇模式下只更新 references",
+    )
     p_refetch.add_argument("--jobs", "-j", type=int, default=5, help="并发数（默认 5）")
 
     # --- top-cited ---
@@ -3998,6 +4223,20 @@ def _build_parser() -> argparse.ArgumentParser:
     p_arxiv_fetch.add_argument("--force", action="store_true", help="覆盖已有同名 PDF 或强制 pipeline 处理")
     p_arxiv_fetch.add_argument("--dry-run", action="store_true", help="预览将要执行的操作")
 
+    # --- websearch ---
+    p_web = sub.add_parser("websearch", help="实时网页搜索 (Bing via GUILessBingSearch)")
+    p_web.set_defaults(func=cmd_websearch)
+    p_web.add_argument("query", nargs="+", help="搜索查询词")
+    p_web.add_argument("--count", type=int, default=10, help="返回结果数量（默认 10）")
+
+    # --- webextract ---
+    p_wext = sub.add_parser("webextract", help="网页内容提取 (qt-web-extractor)")
+    p_wext.set_defaults(func=cmd_webextract)
+    p_wext.add_argument("url", help="要提取的网页 URL")
+    p_wext.add_argument("--pdf", action="store_true", help="目标为 PDF 文件")
+    p_wext.add_argument("--full", action="store_true", help="输出完整提取结果，不截断")
+    p_wext.add_argument("--max-chars", type=int, default=4000, help="预览模式最大输出字符数（默认 4000）")
+
     # --- ingest-link ---
     p_ingest_link = sub.add_parser("ingest-link", help="抓取渲染后的网页/在线 PDF，并按文档流程直接入库")
     p_ingest_link.set_defaults(func=cmd_ingest_link)
@@ -4044,6 +4283,58 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["docx", "pptx", "xlsx"],
         default=None,
         help="文件格式（默认从扩展名推断）",
+    )
+
+    # --- diagram ---
+    p_diagram = sub.add_parser("diagram", help="论文 → 可编辑科研图表（DOT/SVG / drawio XML / Mermaid）")
+    p_diagram.set_defaults(func=cmd_diagram)
+    p_diagram.add_argument("paper_id", nargs="?", help="论文 ID（目录名 / UUID / DOI）；与 --from-ir 二选一")
+    p_diagram.add_argument(
+        "--type",
+        choices=["model_arch", "tech_route", "exp_setup"],
+        default="model_arch",
+        help="图表类型（默认 model_arch）",
+    )
+    p_diagram.add_argument(
+        "--format",
+        choices=["svg", "drawio", "dot", "mermaid"],
+        default="svg",
+        help="输出格式（默认 svg）",
+    )
+    p_diagram.add_argument(
+        "--dump-ir",
+        action="store_true",
+        help="仅提取并保存 IR（JSON），不渲染",
+    )
+    p_diagram.add_argument(
+        "--from-ir",
+        type=str,
+        default=None,
+        help="从已有的 IR JSON 文件直接渲染（与 paper_id / --from-text 三选一）",
+    )
+    p_diagram.add_argument(
+        "--from-text",
+        type=str,
+        default=None,
+        help="从文字描述直接生成图表（与 paper_id / --from-ir 三选一）",
+    )
+    p_diagram.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default=None,
+        help="输出目录（默认 workspace/figures/）",
+    )
+    p_diagram.add_argument(
+        "--critic",
+        action="store_true",
+        help="启用 Critic-Agent 闭环迭代自审（参考 PaperVizAgent 的 Critic-Visualizer loop）",
+    )
+    p_diagram.add_argument(
+        "--critic-rounds",
+        type=int,
+        default=3,
+        help="Critic 最大迭代轮次（默认 3，仅 --critic 时生效）",
     )
 
     # --- enrich-l3 ---

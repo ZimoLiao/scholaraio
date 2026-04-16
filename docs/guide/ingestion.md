@@ -70,7 +70,12 @@ scholaraio backfill-abstract --doi-fetch
 # Re-fetch citation counts and bibliographic details from APIs
 scholaraio refetch --all
 scholaraio refetch "<paper-id>"
+
+# Only backfill missing references for DOI-bearing papers
+scholaraio refetch --all --references-only
+scholaraio refetch "<paper-id>" --references-only
 ```
 
 - `backfill-abstract` fills missing abstracts from local Markdown, and can prefer official publisher abstracts when `--doi-fetch` is enabled.
-- `refetch` re-runs Crossref / Semantic Scholar / OpenAlex enrichment for already ingested papers.
+- `refetch` re-runs Crossref / Semantic Scholar / OpenAlex enrichment for already ingested papers, including structured `references` backfill.
+- `refetch --references-only` / `--refs-only` is the low-risk maintenance path when you only want to fill empty `references`; batch mode skips papers that already have references, and single-paper mode leaves citation-count refresh alone.

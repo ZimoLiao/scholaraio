@@ -68,12 +68,13 @@ Then open the repository in Codex, Claude Code, or another supported agent. In t
 | **Remote Backup** | Rsync-based sync | Back up the ScholarAIO `data/` workspace to configured remote targets through named rsync plans |
 | **AI-for-Science Runtime** | Use scientific software more accurately | Use scientific software against official documentation at runtime instead of guessing commands and parameters |
 | **Extensible Tool Onboarding** | Keep adding the tools that matter | As new scientific tools and workflows become important, the system can keep expanding |
-| **Academic Writing** | AI-assisted writing | Router-first workflows for literature review, paper sections, citation check, rebuttal, gap analysis, poster packages, and technical reports — with every citation traceable to your own library |
+| **Academic Writing** | AI-assisted writing | Router-first workflows for literature review, guided single-paper reading, paper sections, citation check, rebuttal, gap analysis, poster packages, and technical reports — with every citation traceable to your own library |
 
 For writing tasks, start with the router-style writing entry when the deliverable is clear but the workflow is not. The current writing stack is organized around:
 
 - `academic-writing`: route by deliverable and writing stage
 - `literature-review`: long-form review and survey writing
+- `paper-guided-reading`: guided deep reading of a single paper from fuzzy search to full-text analysis
 - `paper-writing`: manuscript sections and paper-focused drafting
 - `review-response`: rebuttal and response-letter workflows
 - `research-gap`: gap analysis and open-question reports

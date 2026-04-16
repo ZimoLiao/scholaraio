@@ -31,9 +31,10 @@ In practice, this means `scholaraio ingest-link` can ingest:
 - online PDFs and report URLs
 - technical docs, manuals, standards, and web articles as normal `document` records
 
-The current command expects `qt-web-extractor` to be reachable through:
+The current command resolves `qt-web-extractor` in this order:
 
-- `WEBEXTRACT_URL` if set
+- `config.yaml -> webextract.base_url` / `webextract.api_key`
+- `WEBEXTRACT_URL` / `WEBEXTRACT_API_KEY`
 - otherwise `http://127.0.0.1:8766`
 
 ## Recommended setup

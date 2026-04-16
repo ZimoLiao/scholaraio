@@ -1,7 +1,7 @@
 ---
 name: audit
 description: Audit paper data quality in the knowledge base. Checks for missing fields, filename issues, DOI duplicates, title mismatches, and more. Supports LLM-based deep diagnosis for title mismatches and automated repair. Use when the user wants to check data quality, find problems, or fix metadata issues.
-version: 1.0.0
+version: 1.1.0
 author: ZimoLiao/scholaraio
 license: MIT
 tags: ["academic", "research", "metadata", "data-quality"]
@@ -23,9 +23,9 @@ scholaraio audit [--severity error|warning|info]
 
 ## 阶段二：LLM 深度诊断（title_mismatch 专项）
 
-对每篇 `title_mismatch` 论文，用 Read 工具读取 meta.json 和 paper.md（前 80 行），判断：
+对每篇 `title_mismatch` 论文，用 Read 工具读取 meta.json 和 paper.md（前 80 行），提取最像标题的候选（不只看首个 H1），判断：
 - MD 正文的实际主题/标题是否与 JSON 元数据一致
-- 无害（MinerU H1 识别问题）vs 真正的内容错配
+- 无害（封面/前言页、MinerU 标题识别问题）vs 真正的内容错配
 
 ## 阶段三：修复
 
@@ -49,10 +49,14 @@ scholaraio pipeline reindex
 | `missing_title` | error | 缺少标题 |
 | `missing_md` | error | JSON 无对应 MD 文件 |
 | `duplicate_doi` | error | DOI 重复 |
-| `missing_doi` | warning | 缺少 DOI |
+| `missing_doi` | warning | 缺少 DOI（document / patent 等非论文类型通常不报） |
 | `missing_abstract` | warning | 缺少摘要 |
-| `title_mismatch` | warning | JSON 标题与 MD H1 不一致 |
+| `title_mismatch` | warning | JSON 标题与 MD 前 80 行里的标题候选不一致 |
 | `nonstandard_filename` | info | 文件名不符合规范格式 |
+
+补充判断口径：
+- `paper_type` 为空时，仍按普通论文保守检查 `missing_doi` / `missing_journal`
+- `dissertation`、`document`、`technical-report`、`lecture-notes` 等非 article 类型，优先警惕封面/前言页导致的 `title_mismatch` 误报
 
 ## 示例
 

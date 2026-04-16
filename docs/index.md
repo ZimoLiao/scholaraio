@@ -20,7 +20,7 @@ ScholarAIO is a research infrastructure for AI agents. You interact with your li
 - **Extensible Tool Onboarding**: Keep adding the next scientific tool users need through a documented onboarding workflow
 - **Office Document Inspection**: Verify DOCX / PPTX / XLSX structure with `document inspect`
 - **Agent Skills**: Reusable workflows for search, writing, scientific runtime, and more
-- **Writing Router**: Start with `academic-writing` to route reviews, paper sections, rebuttals, posters, and technical reports to the right workflow
+- **Writing Router**: Start with `academic-writing` to route reviews, guided deep reading, paper sections, rebuttals, posters, and technical reports to the right workflow
 
 ## Quick Start
 

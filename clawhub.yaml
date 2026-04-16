@@ -78,6 +78,10 @@ skills:
     path: .claude/skills/literature-review
     description: "Write a literature review based on workspace papers: topic organization, narrative, gap identification"
 
+  - name: scholaraio/paper-guided-reading
+    path: .claude/skills/paper-guided-reading
+    description: "Guide single-paper deep reading from fuzzy search to structured full-text analysis and notes capture"
+
   - name: scholaraio/paper-writing
     path: .claude/skills/paper-writing
     description: "Assist writing research paper sections (Intro, Related Work, Method, Results, Discussion, Conclusion)"

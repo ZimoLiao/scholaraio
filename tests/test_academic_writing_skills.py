@@ -29,7 +29,7 @@ def _extract_skill_routes(text: str) -> set[str]:
 
 
 def test_router_and_deliverable_skills_have_valid_frontmatter() -> None:
-    for skill_name in ("academic-writing", "poster", "technical-report"):
+    for skill_name in ("academic-writing", "paper-guided-reading", "poster", "technical-report"):
         skill_path = SKILLS_DIR / skill_name / "SKILL.md"
         frontmatter, body = _split_frontmatter(skill_path)
 
@@ -42,6 +42,7 @@ def test_academic_writing_router_only_points_to_existing_skills() -> None:
     router_path = SKILLS_DIR / "academic-writing" / "SKILL.md"
     routes = _extract_skill_routes(_read(router_path))
 
+    assert "paper-guided-reading" in routes
     assert "poster" in routes
     assert "technical-report" in routes
     for route in routes:
@@ -62,6 +63,7 @@ def test_writing_guide_mentions_router_and_new_deliverable_skills() -> None:
     content = _read(ROOT / "docs" / "guide" / "writing.md")
 
     assert "/academic-writing" in content
+    assert "/paper-guided-reading" in content
     assert "/poster" in content
     assert "/technical-report" in content
     assert "Choose By Deliverable" in content
@@ -73,6 +75,7 @@ def test_agent_instructions_list_router_and_new_deliverable_skills() -> None:
         content = _read(ROOT / rel_path)
 
         assert "academic-writing" in content
+        assert "paper-guided-reading" in content
         assert "poster" in content
         assert "technical-report" in content
 
@@ -81,7 +84,7 @@ def test_clawhub_registers_new_writing_skills() -> None:
     data = yaml.safe_load(_read(ROOT / "clawhub.yaml"))
     skills = {item["name"]: item for item in data["skills"]}
 
-    for skill_name in ("academic-writing", "poster", "technical-report"):
+    for skill_name in ("academic-writing", "paper-guided-reading", "poster", "technical-report"):
         fq_name = f"scholaraio/{skill_name}"
         assert fq_name in skills
         assert skills[fq_name]["path"] == f".claude/skills/{skill_name}"

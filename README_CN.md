@@ -74,6 +74,7 @@ scholaraio setup
 
 - `academic-writing`：按交付物和写作阶段分流
 - `literature-review`：长文综述与 survey
+- `paper-guided-reading`：从模糊检索到单篇深读的引导式精读
 - `paper-writing`：论文具体章节写作
 - `review-response`：审稿回复与 rebuttal
 - `research-gap`：研究空白分析与开放问题报告

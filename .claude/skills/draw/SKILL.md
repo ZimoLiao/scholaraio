@@ -1,188 +1,104 @@
 ---
 name: draw
-description: Generate diagrams and vector graphics. Supports Mermaid (flowcharts, sequence diagrams, ER diagrams, Gantt charts, mind maps) via mermaid-py, and custom vector graphics (shapes, text, gradients, layers) via cli-anything-inkscape. Outputs PNG/SVG/PDF to workspace/. Use when the user wants to visualize workflows, architecture, data relationships, research timelines, concept maps, or create polished figures for papers.
-version: 1.0.0
+description: Generate diagrams from structured text via an intermediate representation
+  (IR). Supports multiple rendering backends including Mermaid flowcharts, Graphviz
+  DOT/SVG, drawio XML, and custom vector graphics via cli-anything-inkscape.
+  Use when the user wants to visualize workflows, architecture, data relationships,
+  research timelines, concept maps, or create polished figures for papers.
+version: 1.1.0
 author: ZimoLiao/scholaraio
 license: MIT
-tags: ["academic", "diagram", "vector-graphics", "visualization"]
+tags:
+- academic
+- diagram
+- vector-graphics
+- visualization
+tier: visualization
+destructive: false
 ---
 
-# 绘图工具
+# 绘图工具（Text → IR → Diagram）
 
-生成结构化图表（Mermaid）或自定义矢量图形（cli-anything-inkscape）。
+`draw` skill 的核心工作流是**两步式**：先将文字描述或论文内容转换为统一的中间表示（IR），再将 IR 渲染为多种可编辑格式。
 
-## 工具选择
+## 后端选择速查表
 
-| 需求 | 工具 | 典型用例 |
-|------|------|----------|
-| 流程图、时序图、ER 图、甘特图、思维导图 | **Mermaid** | 研究流程、系统架构、数据关系 |
-| 自定义矢量图、信息图、论文配图 | **cli-anything-inkscape** | 实验示意图、概念图、精排版图表 |
+| 需求 | 推荐后端 | 输出格式 | 特点 |
+|------|----------|----------|------|
+| 快速画流程图/架构图，零依赖预览 | **Mermaid** | `.mermaid` / 嵌入 Markdown | 文本即代码，GitHub/Obsidian/Claude Code 原生渲染 |
+| 论文插图，LaTeX Beamer 直插 | **Graphviz SVG** | `.svg` + `.dot` 源码 | 矢量图，可版本控制，`<?xml>` 级精确 |
+| 在线协作/精调布局 | **drawio** | `.drawio` XML | 导入 [diagrams.net](https://app.diagrams.net) 后手动拖拽调整 |
+| 自定义实验示意图、信息图 | **cli-anything-inkscape** | `.svg` | Python API 自由绘制形状、文字、渐变 |
+| 程序化批处理、版本控制 | **Graphviz DOT** | `.dot` | 纯文本，Diff 友好，任何平台可编译 |
 
----
+## 工作流架构
 
-## 工具 1：Mermaid 结构化图表
+```
+┌─────────────┐     extract_diagram_ir()      ┌────────────┐
+│  文字描述    │  ────────────────────────────> │     IR     │
+│  或论文全文  │                               │  {nodes,   │
+└─────────────┘                               │   edges,   │
+                                              │   layout}  │
+                                              └─────┬──────┘
+                                                    │ render_ir(fmt)
+              ┌─────────────────────────────────────┼─────────────────────────────────────┐
+              ▼                                     ▼                                     ▼
+        ┌──────────┐                          ┌──────────┐                        ┌──────────┐
+        │  Mermaid │                          │   SVG    │                        │  drawio  │
+        │ flowchart│                          │ (Graphviz│                        │  XML     │
+        └──────────┘                          └──────────┘                        └──────────┘
+```
 
-### 支持的图表类型
+- **IR（Intermediate Representation）**：标准化 JSON，包含 `title`、`nodes[]`、`edges[]`、`layout_hint`
+- **提取**：可由 LLM 从论文 Method/Architecture 章节自动提取，也可由用户直接提供文字描述后调用 LLM 生成 IR
+- **渲染**：通过 `render_ir(ir, fmt)` 分发到注册的后端，完全解耦
 
-- `flowchart` — 流程图（研究流程、算法步骤）
-- `sequenceDiagram` — 时序图（系统交互、实验步骤）
-- `erDiagram` — 实体关系图（数据库、数据结构）
-- `gantt` — 甘特图（研究计划、项目时间线）
-- `mindmap` — 思维导图（概念梳理、文献综述框架）
-- `classDiagram` — 类图（软件架构）
-- `pie` — 饼图（数据分布）
-- `xychart-beta` — 折线/柱状图
+## 使用方式
 
-### 使用方式
+### 方式 1：从论文自动生成（调用 diagram CLI）
 
-**方式 C：直接嵌入 Markdown（零依赖，首选）**
+```bash
+# 提取论文中的模型架构，渲染为 SVG
+scholaraio diagram <paper-id> --type model_arch --format svg
 
-无需任何渲染工具，直接在 Markdown 中写：
-````markdown
+# 只提取 IR，保存 JSON 供后续二次渲染
+scholaraio diagram <paper-id> --type model_arch --dump-ir
+
+# 从已有 IR 渲染为 drawio
+scholaraio diagram --from-ir workspace/figures/xxx.ir.json --format drawio
+
+# 启用 Critic-Agent 闭环迭代自审（自动检查完整性、准确性、一致性并修正）
+scholaraio diagram <paper-id> --type model_arch --format svg --critic
+
+# 指定 Critic 最大迭代轮次（默认 3 轮）
+scholaraio diagram <paper-id> --type model_arch --format svg --critic --critic-rounds 2
+```
+
+### 方式 2：从文字描述生成 IR 再渲染
+
+当用户给出一段文字描述（如研究流程、实验设计）时：
+
+1. 调用 LLM 将描述转换为 IR JSON
+2. 使用 `render_ir()` 或 `scholaraio diagram --from-ir` 生成目标格式
+
+### 方式 3：Mermaid 零依赖渲染
+
+若用户只需要快速预览流程图，直接在 Markdown 中写 Mermaid 语法即可：
+
+```markdown
 ```mermaid
 flowchart TD
-    A --> B
-    B --> C
-```
-````
-Claude Code 的预览会自动渲染。输出到 `.md` 文件时也可直接查看（GitHub/Obsidian 等均支持）。
-
-**方式 D：mmdc 本地渲染为 PNG/SVG（需本地安装）**
-
-```bash
-# 安装（两步，缺一不可）：
-npm install -g @mermaid-js/mermaid-cli
-# 安装后还需安装 Chrome headless shell（在 mmdc 所在的 node_modules 目录下执行）：
-cd $(npm root -g)/@mermaid-js/mermaid-cli
-npx puppeteer browsers install chrome-headless-shell
-
-# 生成图片
-mmdc -i diagram.mmd -o workspace/figures/diagram.png
-mmdc -i diagram.mmd -o workspace/figures/diagram.svg
-```
-
-通过 Python 调用 mmdc：
-```python
-import subprocess, tempfile
-from pathlib import Path
-
-mermaid_code = """
-flowchart LR
-    A[数据采集] --> B[预处理]
-    B --> C{质量检查}
-    C -->|通过| D[模型训练]
-    C -->|失败| B
-"""
-
-with tempfile.NamedTemporaryFile(suffix=".mmd", mode="w", delete=False) as f:
-    f.write(mermaid_code)
-    mmd_path = f.name
-
-out_path = "workspace/figures/pipeline.png"
-Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-result = subprocess.run(["mmdc", "-i", mmd_path, "-o", out_path], capture_output=True, text=True)
-if result.returncode != 0:
-    print(result.stderr)
-```
-
-**方式 A/B：mermaid-py（需联网，仅有网络时可用）**
-
-```bash
-pip install mermaid-py
-```
-
-```python
-from mermaid import Mermaid
-from mermaid.graph import Graph
-
-# 注意：mermaid-py 所有渲染方式（to_svg/to_png）均需通过 mermaid.ink 在线 API
-# WSL2/代理环境下可能失败；无网络时请改用方式 C 或方式 D
-graph = Graph('flowchart', "flowchart LR\n    A --> B\n    B --> C")
-Mermaid(graph).to_png('workspace/diagram.png')
-```
-
-### 常用图表模板
-
-**研究流程图：**
-```
-flowchart LR
     A[文献调研] --> B[问题定义]
     B --> C[方法设计]
     C --> D[实验实施]
-    D --> E{结果分析}
-    E -->|不满足| C
-    E -->|满足| F[论文撰写]
+```
 ```
 
-**文献综述时间线：**
-```
-gantt
-    title 研究时间线
-    dateFormat YYYY
-    section 早期工作
-    基础理论建立 :2010, 5y
-    section 方法发展
-    深度学习引入 :2015, 3y
-    section 近期进展
-    Transformer 架构 :2018, 3y
-    大模型时代 :2021, 3y
-```
+Claude Code 预览自动渲染，无需任何外部工具。
 
----
+### 方式 4：cli-anything-inkscape 自定义矢量图
 
-## 工具 2：cli-anything-inkscape 矢量图形
-
-### 安装
-
-```bash
-pip install cli-anything-inkscape
-```
-
-### 重要：使用 Python API（推荐）
-
-cli-anything-inkscape 是有状态的（in-memory session）——每次 CLI 调用都是独立进程，状态不会持久化。因此**必须在一个 Python 脚本中完成所有操作**，使用 Python API 直接调用：
-
-```python
-from pathlib import Path
-from cli_anything.inkscape.core import (
-    document as doc_mod,
-    shapes as shape_mod,
-    text as text_mod,
-    styles as style_mod,
-    export as export_mod,
-)
-
-SVG = Path("workspace/figures/diagram.svg")
-SVG.parent.mkdir(parents=True, exist_ok=True)
-
-# 1. 新建文档
-proj = doc_mod.create_document(width=800, height=500, units='px', background='#ffffff')
-
-# 2. 添加标题文字
-text_mod.add_text(proj, text="实验架构示意图", x=400, y=40,
-                  font_size=22, font_weight='bold', text_anchor='middle', fill='#1a1a2e')
-
-# 3. 添加矩形并着色
-# ⚠️ 重要：set_fill 使用整数索引（对象在 proj['objects'] 中的位置），不是字符串 ID
-shape_mod.add_rect(proj, x=50, y=100, width=170, height=90, rx=8, ry=8)
-idx = len(proj['objects']) - 1          # 当前对象的整数索引
-style_mod.set_fill(proj, idx, '#4A90D9')
-
-# 4. 矩形内添加文字
-text_mod.add_text(proj, text="原始数据", x=135, y=148,
-                  font_size=15, font_weight='bold', text_anchor='middle', fill='#ffffff')
-
-# 5. 添加连接线
-shape_mod.add_line(proj, x1=220, y1=145, x2=300, y2=145)
-idx = len(proj['objects']) - 1
-style_mod.set_stroke(proj, idx, '#555566', width=2.5)
-
-# 6. 导出 SVG（必须显式调用 export，不会自动保存）
-export_mod.export_svg(proj, str(SVG), overwrite=True)
-print(f"已生成: {SVG}")
-```
-
-### 完整示例：三模块流程图
+适合需要精确控制每个像素的信息图、实验装置示意图。
 
 ```python
 from pathlib import Path
@@ -191,82 +107,99 @@ from cli_anything.inkscape.core import (
     text as text_mod, styles as style_mod, export as export_mod,
 )
 
-SVG = Path("workspace/figures/pipeline.svg")
+SVG = Path("workspace/figures/diagram.svg")
 SVG.parent.mkdir(parents=True, exist_ok=True)
 
 proj = doc_mod.create_document(width=800, height=300, units='px', background='#f8f9fa')
 
-# 模块配置
-modules = [
-    {"label": "数据输入", "sub": "Raw Input", "x": 50,  "color": "#4A90D9"},
-    {"label": "处理模型", "sub": "Model",     "x": 315, "color": "#E8A838"},
-    {"label": "输出结果", "sub": "Output",    "x": 580, "color": "#5BAD6F"},
-]
+# 添加矩形
+shape_mod.add_rect(proj, x=50, y=100, width=170, height=90, rx=8, ry=8)
+style_mod.set_fill(proj, len(proj['objects']) - 1, "#4A90D9")
 
-for m in modules:
-    shape_mod.add_rect(proj, x=m["x"], y=100, width=170, height=90, rx=8, ry=8)
-    style_mod.set_fill(proj, len(proj['objects']) - 1, m["color"])
-    text_mod.add_text(proj, text=m["label"], x=m["x"]+85, y=148,
-                      font_size=15, font_weight='bold', text_anchor='middle', fill='#ffffff')
-    text_mod.add_text(proj, text=m["sub"], x=m["x"]+85, y=168,
-                      font_size=10, text_anchor='middle', fill='#e0e0e0')
+# 添加文字
+text_mod.add_text(proj, text="数据输入", x=135, y=148,
+                  font_size=15, font_weight='bold', text_anchor='middle', fill='#ffffff')
 
-# 连接箭头
-for x1, x2 in [(220, 315), (485, 580)]:
-    shape_mod.add_line(proj, x1=x1, y1=145, x2=x2, y2=145)
-    style_mod.set_stroke(proj, len(proj['objects']) - 1, '#555566', width=2.5)
-
+# 导出
 export_mod.export_svg(proj, str(SVG), overwrite=True)
-print(f"已生成: {SVG} ({SVG.stat().st_size} bytes)")
 ```
 
-### 支持的元素与 API
+## 各后端详细用法
 
-| 操作 | 函数 | 注意 |
-|------|------|------|
-| 新建文档 | `doc_mod.create_document(width, height, units, background)` | — |
-| 矩形 | `shape_mod.add_rect(proj, x, y, width, height, rx, ry)` | — |
-| 圆形 | `shape_mod.add_circle(proj, cx, cy, r)` | — |
-| 直线 | `shape_mod.add_line(proj, x1, y1, x2, y2)` | — |
-| 文字 | `text_mod.add_text(proj, text, x, y, font_size, font_weight, text_anchor, fill)` | — |
-| 填充色 | `style_mod.set_fill(proj, idx, color)` | `idx` 为**整数**索引 |
-| 描边 | `style_mod.set_stroke(proj, idx, color, width)` | `idx` 为**整数**索引 |
-| 导出 SVG | `export_mod.export_svg(proj, path, overwrite=True)` | 必须显式调用 |
+### Graphviz DOT / SVG
 
----
+需要系统安装 `dot`：
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install graphviz
+
+# macOS
+brew install graphviz
+```
+
+生成 SVG（同时保留 `.dot` 源码）：
+
+```bash
+scholaraio diagram <paper-id> --format svg -o workspace/figures/
+```
+
+LaTeX Beamer 插入代码（需 `-shell-escape` + Inkscape）：
+
+```latex
+\begin{frame}
+\centering
+\includesvg[width=0.8\columnwidth]{workspace/figures/diagram_xxx.svg}
+\end{frame}
+```
+
+### drawio XML
+
+```bash
+scholaraio diagram <paper-id> --format drawio -o workspace/figures/
+```
+
+用浏览器打开 [https://app.diagrams.net](https://app.diagrams.net) 后选择 **File → Open from → Device** 导入编辑。
+
+### Mermaid
+
+```bash
+scholaraio diagram <paper-id> --format mermaid -o workspace/figures/
+```
+
+输出 `.mermaid` 文件，可直接嵌入 Markdown 或用 `mmdc` 本地渲染为 PNG/SVG。
 
 ## 执行逻辑
 
-1. **判断图表类型**：结构化/逻辑图 → Mermaid；精美配图/示意图 → cli-anything-inkscape
+1. **判断输入来源**：
+   - 用户提供了论文 ID → 调用 `scholaraio diagram` 提取 + 渲染
+   - 用户提供了文字描述 → LLM 生成 IR → `render_ir()`
+   - 用户已有 Mermaid 代码 → 直接嵌入 Markdown 或转 IR 后多格式输出
 
-2. **选择 Mermaid 渲染方式**：
-   - 默认：方式 C（嵌入 Markdown，零依赖，Claude Code 预览自动渲染）
-   - 需要独立图片文件：方式 D（mmdc，需预先安装，两步安装见上）
-   - 有网络且已安装 mermaid-py：方式 A/B（调用 mermaid.ink 在线 API）
+2. **选择后端**：参照上方「后端选择速查表」，根据用户的最终使用场景推荐格式
 
-3. **生成代码**：根据用户描述生成 Mermaid 代码或完整 Python 脚本
-
-4. **输出到 workspace/**：
+3. **输出到 `workspace/figures/`**：
    ```
-   workspace/
-   └── figures/
-       ├── diagram.svg
-       ├── diagram.png
-       └── experiment_setup.svg
+   workspace/figures/
+   ├── diagram_xxx.svg
+   ├── diagram_xxx.dot
+   ├── diagram_xxx.drawio
+   └── diagram_xxx.mermaid
    ```
 
-5. **提示用户**：告知输出路径和嵌入方式（`![图名](workspace/figures/diagram.png)`）
+4. **提示嵌入方式**：SVG → Beamer `\includesvg`；drawio → diagrams.net 导入；Mermaid → Markdown 嵌入
 
 ## 示例
 
 用户说："画一个我的研究流程图"
-→ 生成 Mermaid flowchart，输出到 `workspace/figures/research_flow.svg`
+→ 若已有论文：提取 Method → IR → SVG
+→ 若无论文：根据描述生成 IR → Mermaid flowchart
 
 用户说："帮我画一个实验装置示意图"
-→ 用 cli-anything-inkscape Python API 在单脚本中完成，保存 SVG
+→ 用 cli-anything-inkscape Python API 绘制自定义 SVG
 
-用户说："画一个过去10年该领域的发展时间线"
-→ 生成 Mermaid gantt 图，包含关键论文/方法里程碑
+用户说："把这个 Mermaid 代码转成 SVG"
+→ 解析为 IR → `render_ir(ir, "svg")`
 
-用户说："把这个 Mermaid 代码渲染成图片"
-→ 优先用 mmdc（方式 D）本地渲染为 PNG/SVG；mmdc 未安装则输出 Markdown 嵌入（方式 C）
+用户说："把这篇论文的模型架构画成可编辑的图"
+→ `scholaraio diagram <paper-id> --type model_arch --format drawio`

@@ -196,6 +196,43 @@ def test_enrich_metadata_records_arxiv_as_api_source_when_only_arxiv_lookup_succ
     assert meta.extraction_method == "arxiv_lookup"
 
 
+def test_enrich_metadata_falls_back_to_crossref_reference_dois_when_s2_references_missing(monkeypatch):
+    monkeypatch.setattr(
+        "scholaraio.ingest.metadata._api.query_crossref",
+        lambda **kwargs: (
+            {
+                "DOI": "10.1234/example",
+                "title": ["Particle-laden channel flow"],
+                "container-title": ["Journal of Fluid Mechanics"],
+                "author": [{"given": "Alice", "family": "Example"}],
+                "published-print": {"date-parts": [[2024]]},
+                "reference": [
+                    {"DOI": "10.1017/jfm.1"},
+                    {"DOI": "10.1017/jfm.2"},
+                    {"unstructured": "No DOI here"},
+                    {"doi": "10.1017/JFM.1"},
+                ],
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        "scholaraio.ingest.metadata._api.query_semantic_scholar",
+        lambda **kwargs: {
+            "paperId": "paper-123",
+            "title": "Particle-laden channel flow",
+            "externalIds": {"DOI": "10.1234/example"},
+            "references": [{"externalIds": {}}],
+        },
+    )
+    monkeypatch.setattr("scholaraio.ingest.metadata._api.query_openalex", lambda **kwargs: {})
+
+    meta = PaperMetadata(title="Particle-laden channel flow", doi="10.1234/example")
+
+    enrich_metadata(meta)
+
+    assert meta.references == ["10.1017/jfm.1", "10.1017/jfm.2"]
+
+
 def test_enrich_metadata_rejects_title_search_hit_when_author_and_year_both_conflict(monkeypatch):
     monkeypatch.setattr(
         "scholaraio.ingest.metadata._api.query_crossref",

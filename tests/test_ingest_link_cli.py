@@ -17,7 +17,7 @@ class TestIngestLinkCommand:
 
         called = {"extract": 0, "pipeline": 0}
         monkeypatch.setattr(
-            "scholaraio.sources.webtools.webextract",
+            "scholaraio.sources.webtools.extract_web",
             lambda *args, **kwargs: called.__setitem__("extract", called["extract"] + 1),
         )
         monkeypatch.setattr(
@@ -44,7 +44,7 @@ class TestIngestLinkCommand:
         messages: list[str] = []
         monkeypatch.setattr(cli, "ui", messages.append)
 
-        def fake_extract(url, *, pdf=None, base_url=None):
+        def fake_extract(url, *, pdf=None, cfg=None, include_html=False, timeout=120.0):
             assert pdf is None
             return {
                 "url": url,
@@ -66,7 +66,7 @@ class TestIngestLinkCommand:
             seen["md_text"] = md_files[0].read_text(encoding="utf-8")
             seen["sidecar"] = json.loads(json_files[0].read_text(encoding="utf-8"))
 
-        monkeypatch.setattr("scholaraio.sources.webtools.webextract", fake_extract)
+        monkeypatch.setattr("scholaraio.sources.webtools.extract_web", fake_extract)
         monkeypatch.setattr("scholaraio.ingest.pipeline.run_pipeline", fake_run_pipeline)
 
         cfg = SimpleNamespace(_root=tmp_path, papers_dir=tmp_path / "data" / "papers")
@@ -95,8 +95,8 @@ class TestIngestLinkCommand:
 
     def test_ingest_link_no_index_skips_global_steps(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
-            "scholaraio.sources.webtools.webextract",
-            lambda url, *, pdf=None, base_url=None: {
+            "scholaraio.sources.webtools.extract_web",
+            lambda url, *, pdf=None, cfg=None, include_html=False, timeout=120.0: {
                 "url": url,
                 "title": "Example Page",
                 "text": "Body",
@@ -128,8 +128,8 @@ class TestIngestLinkCommand:
 
     def test_ingest_link_json_outputs_extracted_summary(self, tmp_path, monkeypatch, capsys):
         monkeypatch.setattr(
-            "scholaraio.sources.webtools.webextract",
-            lambda url, *, pdf=None, base_url=None: {
+            "scholaraio.sources.webtools.extract_web",
+            lambda url, *, pdf=None, cfg=None, include_html=False, timeout=120.0: {
                 "url": url,
                 "title": "Example Page",
                 "text": "Body",
@@ -170,8 +170,8 @@ class TestIngestLinkCommand:
         )
 
         monkeypatch.setattr(
-            "scholaraio.sources.webtools.webextract",
-            lambda url, *, pdf=None, base_url=None: {
+            "scholaraio.sources.webtools.extract_web",
+            lambda url, *, pdf=None, cfg=None, include_html=False, timeout=120.0: {
                 "url": url,
                 "title": "Example Page",
                 "text": "Body",
@@ -216,7 +216,7 @@ class TestIngestLinkCommand:
     def test_ingest_link_pdf_flag_only_sent_when_requested(self, tmp_path, monkeypatch):
         seen: list[bool | None] = []
 
-        def fake_extract(url, *, pdf=None, base_url=None):
+        def fake_extract(url, *, pdf=None, cfg=None, include_html=False, timeout=120.0):
             seen.append(pdf)
             return {
                 "url": url,
@@ -226,7 +226,7 @@ class TestIngestLinkCommand:
                 "error": "",
             }
 
-        monkeypatch.setattr("scholaraio.sources.webtools.webextract", fake_extract)
+        monkeypatch.setattr("scholaraio.sources.webtools.extract_web", fake_extract)
         monkeypatch.setattr("scholaraio.ingest.pipeline.run_pipeline", lambda *args, **kwargs: None)
 
         cfg = SimpleNamespace(_root=tmp_path, papers_dir=tmp_path / "data" / "papers")
@@ -256,6 +256,59 @@ class TestIngestLinkCommand:
 
         assert seen == [None, True]
 
+    def test_ingest_link_uses_cfg_backed_extract_web(self, tmp_path, monkeypatch):
+        messages: list[str] = []
+        monkeypatch.setattr(cli, "ui", messages.append)
+
+        seen: dict[str, object] = {}
+
+        def fake_extract_web(url, *, pdf=None, cfg=None, include_html=False, timeout=120.0):
+            seen["url"] = url
+            seen["pdf"] = pdf
+            seen["cfg"] = cfg
+            return {
+                "url": url,
+                "title": "Example Page",
+                "text": "Body",
+                "html": "",
+                "error": "",
+            }
+
+        def fail_legacy_webextract(*args, **kwargs):
+            raise AssertionError("legacy webextract should not be used")
+
+        monkeypatch.setattr("scholaraio.sources.webtools.extract_web", fake_extract_web)
+        monkeypatch.setattr("scholaraio.sources.webtools.webextract", fail_legacy_webextract)
+
+        called: dict[str, object] = {}
+        monkeypatch.setattr(
+            "scholaraio.ingest.pipeline.run_pipeline",
+            lambda *args, **kwargs: called.__setitem__("pipeline", True),
+        )
+
+        cfg = SimpleNamespace(
+            _root=tmp_path,
+            papers_dir=tmp_path / "data" / "papers",
+            webextract=SimpleNamespace(base_url="http://localhost:9999", api_key="cfg-secret"),
+        )
+
+        cli.cmd_ingest_link(
+            Namespace(
+                urls=["https://example.com/article"],
+                dry_run=False,
+                force=False,
+                pdf=False,
+                no_index=True,
+                json=False,
+            ),
+            cfg,
+        )
+
+        assert seen["url"] == "https://example.com/article"
+        assert seen["pdf"] is None
+        assert seen["cfg"] is cfg
+        assert called["pipeline"] is True
+
     def test_ingest_link_skips_failed_urls_but_keeps_successful_items(self, tmp_path, monkeypatch):
         messages: list[str] = []
         monkeypatch.setattr(cli, "ui", messages.append)
@@ -284,8 +337,8 @@ class TestIngestLinkCommand:
             },
         }
         monkeypatch.setattr(
-            "scholaraio.sources.webtools.webextract",
-            lambda url, *, pdf=None, base_url=None: responses[url],
+            "scholaraio.sources.webtools.extract_web",
+            lambda url, *, pdf=None, cfg=None, include_html=False, timeout=120.0: responses[url],
         )
 
         seen: dict[str, object] = {}
@@ -321,8 +374,8 @@ class TestIngestLinkCommand:
         monkeypatch.setattr(cli, "ui", messages.append)
 
         monkeypatch.setattr(
-            "scholaraio.sources.webtools.webextract",
-            lambda url, *, pdf=None, base_url=None: {
+            "scholaraio.sources.webtools.extract_web",
+            lambda url, *, pdf=None, cfg=None, include_html=False, timeout=120.0: {
                 "url": url,
                 "title": "Warned Page",
                 "text": "Recovered body",
@@ -364,8 +417,8 @@ class TestIngestLinkCommand:
         monkeypatch.setattr(cli, "ui", messages.append)
 
         monkeypatch.setattr(
-            "scholaraio.sources.webtools.webextract",
-            lambda url, *, pdf=None, base_url=None: {
+            "scholaraio.sources.webtools.extract_web",
+            lambda url, *, pdf=None, cfg=None, include_html=False, timeout=120.0: {
                 "url": url,
                 "title": "",
                 "text": "Recovered body",
@@ -407,7 +460,7 @@ class TestIngestLinkCommand:
         monkeypatch.setattr(cli, "ui", messages.append)
         monkeypatch.setattr(cli.time, "sleep", sleep_calls.append)
 
-        def fake_extract(url, *, pdf=None, base_url=None):
+        def fake_extract(url, *, pdf=None, cfg=None, include_html=False, timeout=120.0):
             attempts["count"] += 1
             if attempts["count"] < 3:
                 raise RuntimeError("temporary outage")
@@ -419,7 +472,7 @@ class TestIngestLinkCommand:
                 "error": "",
             }
 
-        monkeypatch.setattr("scholaraio.sources.webtools.webextract", fake_extract)
+        monkeypatch.setattr("scholaraio.sources.webtools.extract_web", fake_extract)
 
         seen: dict[str, object] = {}
 
@@ -455,11 +508,11 @@ class TestIngestLinkCommand:
         monkeypatch.setattr(cli, "ui", messages.append)
         monkeypatch.setattr(cli.time, "sleep", sleep_calls.append)
 
-        def fake_extract(url, *, pdf=None, base_url=None):
+        def fake_extract(url, *, pdf=None, cfg=None, include_html=False, timeout=120.0):
             attempts["count"] += 1
             raise RuntimeError("temporary outage")
 
-        monkeypatch.setattr("scholaraio.sources.webtools.webextract", fake_extract)
+        monkeypatch.setattr("scholaraio.sources.webtools.extract_web", fake_extract)
 
         pipeline_called = {"value": False}
 

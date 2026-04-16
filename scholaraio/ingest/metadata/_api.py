@@ -79,6 +79,15 @@ def query_semantic_scholar(doi: str = "", title: str = "", arxiv_id: str = "") -
         return {}
 
 
+def _oa_api_key() -> str:
+    try:
+        from scholaraio.config import load_config
+
+        return load_config().openalex.api_key or ""
+    except Exception:
+        return ""
+
+
 def query_openalex(doi: str = "", title: str = "") -> dict:
     """查询 OpenAlex API。
 
@@ -101,6 +110,10 @@ def query_openalex(doi: str = "", title: str = "") -> dict:
         url = f"{OA_BASE}?{urlencode(params)}"
     else:
         return {}
+
+    api_key = _oa_api_key()
+    if api_key:
+        url = f"{url}&api_key={api_key}" if "?" in url else f"{url}?api_key={api_key}"
 
     try:
         resp = SESSION.get(url, timeout=TIMEOUT)
@@ -198,6 +211,49 @@ def _title_keywords(title: str, max_words: int = 8) -> str:
     words = re.sub(r"[^\w\s-]", "", title).replace("-", " ").split()
     significant = [w for w in words if w.lower() not in stop]
     return " ".join(significant[:max_words])
+
+
+def _dedupe_dois(dois: list[str]) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for doi in dois:
+        normalized = str(doi or "").strip()
+        if not normalized:
+            continue
+        lowered = normalized.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        deduped.append(lowered)
+    return deduped
+
+
+def _reference_dois_from_s2(s2_data: dict) -> list[str]:
+    ref_dois: list[str] = []
+    for ref in s2_data.get("references") or []:
+        ext_ids = ref.get("externalIds") or {}
+        doi = ext_ids.get("DOI")
+        if doi:
+            ref_dois.append(doi)
+    return _dedupe_dois(ref_dois)
+
+
+def _reference_dois_from_crossref(cr_data: dict) -> list[str]:
+    ref_dois: list[str] = []
+    for ref in cr_data.get("reference") or []:
+        if not isinstance(ref, dict):
+            continue
+        doi = ref.get("DOI") or ref.get("doi")
+        if doi:
+            ref_dois.append(str(doi))
+    return _dedupe_dois(ref_dois)
+
+
+def _collect_reference_dois(cr_data: dict, s2_data: dict) -> list[str]:
+    s2_dois = _reference_dois_from_s2(s2_data)
+    if s2_dois:
+        return s2_dois
+    return _reference_dois_from_crossref(cr_data)
 
 
 def _is_arxiv_datacite_doi(doi: str) -> bool:
@@ -588,17 +644,6 @@ def enrich_metadata(meta: PaperMetadata) -> PaperMetadata:
         # Abstract — S2 gives clean plain text (preferred)
         if s2_data.get("abstract") and not (arxiv_metadata_applied and arxiv_data.get("abstract")):
             meta.abstract = s2_data["abstract"]
-        # References — extract DOIs from S2 references list
-        if s2_data.get("references"):
-            ref_dois = []
-            for ref in s2_data["references"]:
-                ext_ids = ref.get("externalIds") or {}
-                doi = ext_ids.get("DOI")
-                if doi:
-                    ref_dois.append(doi)
-            if ref_dois:
-                meta.references = ref_dois
-
     # ---- 3. Crossref abstract (strip HTML/JATS tags, collapse whitespace) ----
     if cr_data and not meta.abstract and cr_data.get("abstract"):
         raw = cr_data["abstract"]
@@ -606,6 +651,10 @@ def enrich_metadata(meta: PaperMetadata) -> PaperMetadata:
         raw = re.sub(r"[\n\t\r]+", " ", raw)  # collapse newlines/tabs
         raw = re.sub(r"\s{2,}", " ", raw)  # collapse multiple spaces
         meta.abstract = raw.strip()
+
+    ref_dois = _collect_reference_dois(cr_data, s2_data)
+    if ref_dois:
+        meta.references = ref_dois
 
     # ---- 4. OpenAlex (fallback for everything) ----
     if oa_data:

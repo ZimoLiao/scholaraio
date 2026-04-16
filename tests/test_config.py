@@ -52,6 +52,8 @@ class TestBuildConfig:
         assert cfg.llm.backend == "openai-compat"
         assert cfg.paths.papers_dir == "data/papers"
         assert cfg.search.top_k == 20
+        assert cfg.websearch.base_url == ""
+        assert cfg.webextract.base_url == ""
 
     def test_partial_override(self, tmp_path):
         data = {"llm": {"model": "gpt-4o", "timeout": 60}}
@@ -158,6 +160,26 @@ class TestBuildConfig:
         assert cfg.translate.target_lang == "zh"
         assert cfg.translate.chunk_size == 4000
         assert cfg.translate.concurrency == 20
+
+    def test_web_service_sections_are_loaded(self, tmp_path):
+        cfg = _build_config(
+            {
+                "websearch": {
+                    "base_url": "http://localhost:8765",
+                    "api_key": "search-key",
+                },
+                "webextract": {
+                    "base_url": "http://localhost:8766",
+                    "api_key": "extract-key",
+                },
+            },
+            tmp_path,
+        )
+
+        assert cfg.websearch.base_url == "http://localhost:8765"
+        assert cfg.websearch.api_key == "search-key"
+        assert cfg.webextract.base_url == "http://localhost:8766"
+        assert cfg.webextract.api_key == "extract-key"
 
     def test_backup_defaults_are_exposed(self, tmp_path):
         cfg = _build_config({}, tmp_path)

@@ -103,7 +103,7 @@ def write_metadata_json(meta: PaperMetadata, output_path: Path) -> None:
 # ============================================================================
 
 
-def refetch_metadata(json_path: Path) -> bool:
+def refetch_metadata(json_path: Path, *, references_only: bool = False) -> bool:
     """对已入库论文重新查询 API，补全引用量等字段。
 
     从 JSON 反构造 :class:`PaperMetadata`，调用 :func:`enrich_metadata`
@@ -116,9 +116,24 @@ def refetch_metadata(json_path: Path) -> bool:
     Returns:
         ``True`` 表示有字段被更新，``False`` 表示无变化或查询失败。
     """
-    from ._api import enrich_metadata
+    from ._api import _collect_reference_dois, enrich_metadata, query_crossref, query_semantic_scholar
 
     data = json.loads(json_path.read_text(encoding="utf-8"))
+
+    if references_only:
+        doi = str(data.get("doi") or "").strip()
+        if not doi:
+            return False
+        cr_data = query_crossref(doi=doi)
+        s2_data = query_semantic_scholar(doi=doi)
+        ref_dois = _collect_reference_dois(cr_data, s2_data)
+        if not ref_dois or ref_dois == (data.get("references") or []):
+            return False
+        data["references"] = ref_dois
+        from scholaraio.papers import write_meta
+
+        write_meta(json_path.parent, data)
+        return True
 
     meta = PaperMetadata(
         id=data.get("id", ""),

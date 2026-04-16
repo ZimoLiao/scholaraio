@@ -26,6 +26,7 @@ Common skills:
 - `show`: read metadata, abstract, conclusion, or full text
 - `ingest`: process inbox items into the library
 - `workspace`: manage paper subsets for a project
+- `audit`: inspect data quality, missing fields, duplicates, and repair candidates
 - `scrub`: incrementally review and repair low-quality metadata after enrich
 - `literature-review`: organize a review narrative
 - `paper-writing`: draft concrete manuscript sections
@@ -41,6 +42,8 @@ Use these directly when needed:
 - `scholaraio --help`
 - `scholaraio search --help`
 - `scholaraio show --help`
+- `scholaraio audit --help`
+- `scholaraio refetch --help`
 - `scholaraio ingest --help`
 - `scholaraio ws --help`
 - `scholaraio arxiv --help`

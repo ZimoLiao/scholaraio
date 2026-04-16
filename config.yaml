@@ -127,6 +127,10 @@ backup:
   #     exclude: ["*.tmp", "metrics.db"]
   # Prepare SSH keys or a config.local.yaml password override, plus known_hosts; backup run is non-interactive.
 
+# OpenAlex API key (optional, enables higher rate limits)
+# openalex:
+#   api_key: null  # -> config.local.yaml or env OPENALEX_API_KEY
+
 # Zotero integration Zotero 集成
 zotero:
   library_type: user # user | group

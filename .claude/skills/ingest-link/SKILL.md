@@ -62,7 +62,8 @@ scholaraio ingest-link https://example.com/report.pdf --pdf
 - It depends on an external `qt-web-extractor` service
 - The value of that service is rendered-content extraction, not just raw HTML download
 - Default endpoint: `http://127.0.0.1:8766`
-- Override with `WEBEXTRACT_URL`
+- Override with `config.yaml -> webextract.base_url` / `webextract.api_key`
+- Environment variables `WEBEXTRACT_URL` / `WEBEXTRACT_API_KEY` still work as fallback
 
 ### 4. Understand what gets stored
 

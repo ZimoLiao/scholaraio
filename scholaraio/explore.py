@@ -171,6 +171,15 @@ def _build_filter(
     return ",".join(parts), extra
 
 
+def _oa_api_key() -> str:
+    try:
+        from scholaraio.config import load_config
+
+        return load_config().openalex.api_key or ""
+    except Exception:
+        return ""
+
+
 def _fetch_page(
     filt: str,
     extra_params: dict | None = None,
@@ -199,6 +208,9 @@ def _fetch_page(
         params["search"] = keyword
     if extra_params:
         params.update(extra_params)
+    api_key = _oa_api_key()
+    if api_key:
+        params["api_key"] = api_key
     # Retry with exponential backoff for transient errors
     last_exc: Exception | None = None
     for attempt in range(3):

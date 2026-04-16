@@ -25,6 +25,8 @@ PRIORITY_TOKENS = {
     "ppt",
     "review",
     "section",
+    "guided",
+    "reading",
 }
 
 PHRASE_BONUSES = {
@@ -35,6 +37,9 @@ PHRASE_BONUSES = {
     "poster-style": 4.0,
     "paper section": 4.0,
     "response letter": 4.0,
+    "guided reading": 4.0,
+    "deep reading": 4.0,
+    "single paper": 3.0,
 }
 
 
@@ -114,4 +119,11 @@ def test_related_work_prompt_prefers_paper_writing_skill() -> None:
     top_name, top_score = _top_skill("Draft the related work section for my paper")
 
     assert top_name == "paper-writing"
+    assert top_score > 0
+
+
+def test_guided_single_paper_prompt_prefers_paper_guided_reading_skill() -> None:
+    top_name, top_score = _top_skill("Help me do a guided deep reading of a single paper about turbulence")
+
+    assert top_name == "paper-guided-reading"
     assert top_score > 0

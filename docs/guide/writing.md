@@ -13,6 +13,7 @@ Use this first when the user knows the deliverable they want, but not which writ
 | Deliverable | Recommended skill path |
 |-------------|------------------------|
 | Long-form literature review / survey | `/academic-writing` -> `/literature-review` |
+| Guided deep reading of a single paper | `/academic-writing` -> `/paper-guided-reading` |
 | Paper section draft (Introduction, Method, Results, Discussion, Conclusion) | `/academic-writing` -> `/paper-writing` |
 | Response letter / rebuttal | `/academic-writing` -> `/review-response` |
 | Research-gap memo / topic scouting | `/academic-writing` -> `/research-gap` |
@@ -30,6 +31,7 @@ Use this first when the user knows the deliverable they want, but not which writ
 | Define scope and output format | `/academic-writing` |
 | Collect and organize papers | `/workspace` |
 | Read and summarize evidence | `/show` |
+| Guided deep reading of a paper | `/paper-guided-reading` |
 | Draft review narrative | `/literature-review` |
 | Draft manuscript sections | `/paper-writing` |
 | Identify open questions | `/research-gap` |
@@ -45,6 +47,10 @@ Use this first when the user knows the deliverable they want, but not which writ
 ### Literature Review (`/literature-review`)
 
 Generates a structured literature review from papers in a workspace. Organizes by topic, builds narrative, identifies gaps, and exports BibTeX.
+
+### Paper Guided Reading (`/paper-guided-reading`)
+
+Starts from a fuzzy keyword or research interest, searches the local library, confirms the target paper with the user, then loads full text for structured deep reading using a 20-point analytical framework. Outputs conversational insights rather than long reports.
 
 ### Paper Writing (`/paper-writing`)
 

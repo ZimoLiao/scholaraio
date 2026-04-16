@@ -1,6 +1,6 @@
 ---
 name: academic-writing
-description: Use when the user needs help choosing or organizing the right academic-writing workflow by deliverable, writing stage, or final document type such as review article, paper section, rebuttal, PPT, poster, or technical report.
+description: Use when the user needs help choosing or organizing the right academic-writing workflow by deliverable, writing stage, or final document type such as review article, guided single-paper reading, paper section, rebuttal, PPT, poster, or technical report.
 version: 1.0.0
 author: ZimoLiao/scholaraio
 license: MIT
@@ -25,6 +25,7 @@ Do not duplicate the full instructions of the downstream skills. Your job is to:
 | User wants | Route |
 |------------|-------|
 | 文献综述 / survey / review article | `/literature-review` |
+| 单篇论文引导式精读 / guided deep reading of one paper | `/paper-guided-reading` |
 | 论文具体章节（Introduction / Method / Results / Discussion / Conclusion） | `/paper-writing` |
 | 审稿回复 / rebuttal / response letter | `/review-response` |
 | 研究空白分析 / 选题调研 | `/research-gap` |
@@ -40,6 +41,7 @@ Do not duplicate the full instructions of the downstream skills. Your job is to:
 | Stage | Route |
 |-------|-------|
 | 还没确定应该用哪个 skill | 留在本 skill，先做任务分流 |
+| 需要先锁定并深读一篇论文 | `/paper-guided-reading` |
 | 已有论文集合，需要组织叙述 | `/literature-review` |
 | 已有研究内容，需要写论文段落 | `/paper-writing` |
 | 已收到审稿意见 | `/review-response` |
@@ -88,6 +90,9 @@ Do not duplicate the full instructions of the downstream skills. Your job is to:
 
 用户说："帮我写一个技术调研报告"
 → 先判断是偏综述还是偏研究空白分析，然后转 `/literature-review` 或 `/research-gap`，最后如需正式文件再接 `/document`
+
+用户说："我想先找一篇最相关的论文，然后带着我精读"
+→ 先路由到 `/paper-guided-reading`
 
 用户说："我想写 beamer"
 → 先确认是否真的需要 LaTeX beamer；若不是硬要求，默认走演示内容 + `PPTX` 工作流

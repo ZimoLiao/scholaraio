@@ -69,6 +69,7 @@ Knowledge base management:
 Academic writing:
 - `academic-writing` - When the user needs help choosing or organizing the right academic-writing workflow by deliverable or final format (review, paper section, rebuttal, PPT, poster, technical report), use this skill as the router.
 - `literature-review` - When the user wants to write a literature review, organize topics, and build a critical narrative, use this skill.
+- `paper-guided-reading` - When the user wants guided deep reading of a single paper starting from fuzzy keywords or a research question, use this skill.
 - `paper-writing` - When the user wants to draft concrete paper sections rather than a generic summary, use this skill.
 - `citation-check` - When the user is worried about fake citations, wrong author-year pairs, or AI citation hallucinations, use this skill.
 - `writing-polish` - When the user wants academic polishing, de-AI-fication, or style transfer, use this skill.
@@ -196,7 +197,7 @@ CLI command reference: `scholaraio --help`
 Besides skills, the current CLI also provides several important capabilities worth using directly:
 - Retrieval-related: `search-author`, `embed`, `vsearch`, `usearch`, `fsearch`, `top-cited`
 - Graph-related: `refs`, `citing`, `shared-refs`
-- Enrichment and repair: `enrich-toc`, `enrich-l3`, `backfill-abstract`, `refetch`, `repair`
+- Enrichment and repair: `enrich-toc`, `enrich-l3`, `backfill-abstract`, `refetch` (citation counts / references), `repair`
 - Data maintenance: `attach-pdf`, `ingest-link`
 - Workspace: `ws` (subcommands such as `init`, `add`, `remove`, `show`, `search`, `export`, and more)
 - Proceedings: `proceedings` (`apply-split`, `build-clean-candidates`, `apply-clean`) and `fsearch --scope proceedings`
@@ -484,7 +485,7 @@ The exact invocation form of skills depends on the host agent or plugin system; 
 
 - **LLM key** (DeepSeek / OpenAI / Anthropic / Google): required for metadata extraction and content enrichment. Without it, the system degrades to pure regex mode and enrich features are unavailable. This is usually billed separately by the chosen provider; do not assume an agent subscription automatically covers ScholarAIO API calls
 - **MinerU token**: used by `mineru-open-api extract` for MinerU cloud PDF-to-Markdown conversion. `MINERU_TOKEN` is preferred; `MINERU_API_KEY` remains a compatibility alias. Without it, ScholarAIO can still fall back to Docling / PyMuPDF, or ingest manually placed `.md` files. MinerU token application is currently free
-- **Semantic Scholar API key**: optional; useful when the user needs higher throughput for citation refresh / refetch workflows
+- **Semantic Scholar API key**: optional; useful when the user needs higher throughput for citation refresh, references backfill, and other refetch workflows
 - **Zotero API key**: optional; only needed for the Zotero Web API import path (local `zotero.sqlite` import does not require it)
 - The embedding model (Qwen3-Embedding-0.6B, ~1.2GB) downloads automatically on the first `embed` / `vsearch`. For overseas users, change `embed.source` to `huggingface` in `config.yaml`
 
