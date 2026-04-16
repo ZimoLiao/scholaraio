@@ -683,16 +683,16 @@ def test_convert_chunk_cloud_isolates_duplicate_stems_into_unique_output_dirs(tm
     assert seen_output_dirs[0] != seen_output_dirs[1]
 
 
-def test_plan_cloud_chunking_uses_600_page_limit_when_only_page_count_exceeds(tmp_path, monkeypatch):
+def test_plan_cloud_chunking_uses_200_page_limit_when_only_page_count_exceeds(tmp_path, monkeypatch):
     pdf_path = tmp_path / "long.pdf"
     pdf_path.write_bytes(b"%PDF-1.4")
-    monkeypatch.setattr("scholaraio.ingest.mineru._get_pdf_page_count", lambda _path: 601)
+    monkeypatch.setattr("scholaraio.ingest.mineru._get_pdf_page_count", lambda _path: 201)
 
     should_chunk, chunk_size, reason = _plan_cloud_chunking(pdf_path)
 
     assert should_chunk is True
-    assert chunk_size == 600
-    assert "601 pages" in reason
+    assert chunk_size == 200
+    assert "201 pages" in reason
 
 
 def test_plan_cloud_chunking_uses_size_limit_when_file_is_too_large(tmp_path, monkeypatch):
@@ -704,7 +704,7 @@ def test_plan_cloud_chunking_uses_size_limit_when_file_is_too_large(tmp_path, mo
     should_chunk, chunk_size, reason = _plan_cloud_chunking(pdf_path)
 
     assert should_chunk is True
-    assert chunk_size == 320
+    assert chunk_size == 200
     assert "250.0 MB" in reason
 
 
@@ -730,7 +730,7 @@ def test_plan_cloud_chunking_clamps_unknown_page_fallback_to_cloud_max(tmp_path,
     should_chunk, chunk_size, _reason = _plan_cloud_chunking(pdf_path, default_chunk_size=800)
 
     assert should_chunk is True
-    assert chunk_size == 600
+    assert chunk_size == 200
 
 
 def test_convert_pdf_cloud_skips_when_markdown_exists_in_nested_layout(tmp_path, monkeypatch):

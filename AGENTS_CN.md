@@ -331,7 +331,7 @@ data/inbox-doc/
 
 超长 PDF 会在 MinerU 转换前按需自动切分：
 - 本地 MinerU 遵循 `chunk_page_limit`（默认 >100 页）
-- MinerU 云端同时遵循其官方约束（>600 页或 >200MB），若仅超出文件大小限制，会根据平均每页大小估算更安全的分片页数
+- MinerU 云端当前需要按更严格的有效阈值自动切分（>200 页或 >200MB），因为 `mineru-open-api extract` 现网在 PDF 超过 200 页时会直接返回 `-60006`，即使网页文档仍可能写 600 页
 
 ### data/pending/ 目录
 

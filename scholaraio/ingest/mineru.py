@@ -868,7 +868,10 @@ def _find_pdfs(dirpath: Path, recursive: bool = False) -> list[Path]:
 # ============================================================================
 
 DEFAULT_CHUNK_PAGES = 100
-MINERU_CLOUD_MAX_PAGES = 600
+# MinerU web docs still mention 600 pages, but the current cloud extract CLI
+# returns -60006 once a document exceeds 200 pages. Plan chunks against the
+# effective runtime limit to avoid avoidable retries/failures.
+MINERU_CLOUD_MAX_PAGES = 200
 MINERU_CLOUD_MAX_BYTES = 200 * 1024 * 1024
 
 

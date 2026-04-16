@@ -199,7 +199,9 @@ class IngestConfig:
             建议放 config.local.yaml 或环境变量 ``S2_API_KEY``。
         chunk_page_limit: 本地 MinerU 对超长 PDF 的自动切分页数阈值。超过此值
             的 PDF 在转换前自动拆分为多个短 PDF，转换后合并为单个 Markdown。
-            云端 MinerU 另外还会遵循 600 页 / 200MB 的官方单文件限制。
+            云端 MinerU 当前按 200 页 / 200MB 的有效单文件限制做自动切分；
+            官方网页仍可能写 600 页，但 `mineru-open-api extract` 现网会在
+            200+ 页时报 ``-60006``。
         mineru_batch_size: `mineru-open-api` 兼容层的分块大小，默认 20。
         mineru_upload_workers: 云端 CLI / `mineru-open-api` 兼容层的并发配置。
             对分块后的云端转换仍生效，用于限制同时进行的转换任务数。

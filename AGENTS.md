@@ -337,7 +337,7 @@ Non-paper document ingest flow:
 
 Very long PDFs are split automatically before MinerU conversion when needed:
 - local MinerU follows `chunk_page_limit` (default: more than 100 pages)
-- MinerU cloud follows the stricter of its documented limits (more than 600 pages or 200MB) and estimates a safe chunk size when only the file-size limit is exceeded
+- MinerU cloud currently needs a stricter effective limit of more than 200 pages or 200MB for auto-splitting, because `mineru-open-api extract` now returns `-60006` once a PDF exceeds 200 pages even though the web docs may still mention 600 pages
 
 ### `data/inbox-proceedings/` Directory
 

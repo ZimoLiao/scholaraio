@@ -170,7 +170,9 @@ def step_mineru(ctx: InboxCtx) -> StepResult:
     md-only 入库项（无 PDF）自动跳过。已有同名 ``.md`` 时也跳过。
     本地 MinerU 不可达时自动 fallback 到 MinerU 云端 CLI（需配置 ``mineru_api_key`` / token）。
     超长 PDF 会在需要时自动切分后逐段转换再合并。
-    本地 MinerU 使用 ``chunk_page_limit``，云端 MinerU 同时遵循 600 页 / 200MB。
+    本地 MinerU 使用 ``chunk_page_limit``，云端 MinerU 当前按 200 页 / 200MB
+    的有效限制做自动切分（官方网页仍可能写 600 页，但 `mineru-open-api`
+    现网返回会在 200+ 页时报 ``-60006``）。
 
     Args:
         ctx: Inbox 上下文，转换后 ``ctx.md_path`` 指向生成的 ``.md``。
