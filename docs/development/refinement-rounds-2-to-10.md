@@ -309,13 +309,12 @@ ScholarAIO 这里已经做对了。
 - 再定义流程
 - 不试图变成完整工具手册
 
-### 4.4 哪些 skill 已经开始变形
+### 4.4 哪些 skill 已经开始变形，哪些又不能粗暴瘦身
 
-最典型的是：
+最典型的“说明书化”其实是：
 
 - `document`
 - `draw`
-- `setup`
 
 这几个已经越来越像：
 
@@ -331,9 +330,25 @@ ScholarAIO 这里已经做对了。
 - agent 每次都得读大块内容
 - 更新细节时更容易改漏
 
+但 `setup` 这里要单独说：
+
+- 它确实也长
+- 但它和 `document` / `draw` 不是同一类问题
+
+`setup` 里很大一块内容不是“长参考资料”，而是：
+
+- 核心配置 vs 附加配置的顺序
+- MinerU / Docling 的推荐逻辑
+- 检测结果应该怎样向用户转述
+- 初次上手时哪些收费 / 免费边界必须说明
+
+这些内容本质上是 onboarding 策略，不只是说明文字。
+
 ### 4.5 这一轮收敛结论
 
-后面 skill 要改成“三层结构”：
+后面 skill 要分两种方式治理。
+
+第一种：reference-heavy skill，改成“三层结构”
 
 1. `SKILL.md`
    - 只放触发条件、主流程、关键边界、稳定入口
@@ -342,9 +357,34 @@ ScholarAIO 这里已经做对了。
 3. `scripts/` / `assets/`
    - 放可复用脚本、模板和素材
 
+这条最适合：
+
+- `document`
+- `draw`
+- `scientific-tool-onboarding`
+- `bioinformatics`
+
+第二种：strategy-heavy skill，保住主策略，再拆附录。
+
+这条最典型的是：
+
+- `setup`
+
+对它来说，应该外置的是：
+
+- 部署附录
+- 长命令样例
+- 高级字段对照表
+
+不该外置的是：
+
+- 关键推荐逻辑
+- 用户沟通模板
+- 初次上手顺序
+
 一句大白话：
 
-skill 主文件应该像“作战步骤卡”，不是“厚操作手册”。
+skill 主文件通常应该像“作战步骤卡”，但像 `setup` 这样的策略型 skill，仍然需要保留关键判断。
 
 ---
 
@@ -371,6 +411,11 @@ skill 主文件应该像“作战步骤卡”，不是“厚操作手册”。
 - 各 531 行
 - 相似度 99.43%
 
+`.qwen/QWEN.md`：
+
+- 明显更薄
+- 已经更像宿主特定的桥接文件
+
 wrapper 文件反而都挺轻：
 
 - `.cursor/rules/scholaraio.mdc`
@@ -382,8 +427,8 @@ wrapper 文件反而都挺轻：
 
 这说明现在的真正问题不是“所有入口都太重”，而是：
 
-- 总说明太重
-- wrapper 反而已经走对了
+- `AGENTS.md` / `CLAUDE.md` 太重
+- `.qwen/QWEN.md` 和 wrapper 反而更接近目标形态
 
 ### 5.3 这一轮修正了一个判断
 
@@ -403,8 +448,10 @@ wrapper 文件反而都挺轻：
 1. `README` / `docs`
    - 给人看的
 2. `AGENTS.md` / `CLAUDE.md`
-   - 给 agent 常驻加载的
-3. wrapper
+   - 给 agent 常驻加载的“薄目录 + 必要契约”
+3. `.qwen/QWEN.md`
+   - 更薄的宿主特定桥接文件
+4. wrapper
    - 只做轻量转发和宿主说明
 
 其中 `AGENTS.md` / `CLAUDE.md` 应该只保留：
@@ -412,9 +459,11 @@ wrapper 文件反而都挺轻：
 - 项目定位
 - 硬规则
 - 稳定入口
+- T1/T2/T3 + notes 契约
+- 关键数据目录语义
 - 详细文档去哪看
 
-而不是继续承担百科全书角色。
+而不是继续承担百科全书角色，也不是缩成空目录页。
 
 ---
 
@@ -511,6 +560,8 @@ docs 后面要补一个明确的 `architecture/`：
 - `data-model.md`
 - `agent-surfaces.md`
 - `ingest-pipeline.md`
+- `search-and-index.md`
+- `skill-system.md`
 - `toolref-architecture.md`
 
 这样可以把“为什么这样设计”集中收口。
@@ -542,36 +593,40 @@ docs 后面要补一个明确的 `architecture/`：
 
 - 先把“说的不对”改对
 
-#### 第二阶段：入口瘦身期
+#### 第二阶段：入口瘦身、必要契约与最小守卫补齐期
 
 再改：
 
 - `AGENTS.md`
 - `CLAUDE.md`
-- `document` / `draw` / `setup` skill
+- `.qwen/QWEN.md`
+- `docs/architecture/`
+- `docs/reference/`
+- 最小黄金路径回放测试
 
 目的：
 
-- 先让常驻入口和重 skill 瘦下来
+- 先让常驻入口瘦下来，同时把必要契约留下，再把“为什么这样设计”集中收口
 
-#### 第三阶段：结构治理期
+#### 第三阶段：skill 与代码结构治理期
 
 再做：
 
-- `docs/architecture/`
+- `document` / `draw`
+- `setup`（保核心策略、拆附录）
 - `cli.py` 拆分
 - `pipeline.py` 拆分
 
 目的：
 
-- 让解释层和实现层同时变清楚
+- 让重 skill、CLI 和 ingest 结构同时变清楚
 
 #### 第四阶段：守规矩期
 
 最后补：
 
 - 一致性测试
-- 真实任务回放评测
+- 扩展真实任务回放评测
 - 文件体积预警
 
 目的：
@@ -632,7 +687,8 @@ ScholarAIO 当前不需要“革命式重构”，需要的是“分期治理”
 
 理想状态是：
 
-- `AGENTS.md` / `CLAUDE.md` 明显变薄
+- `AGENTS.md` / `CLAUDE.md` 明显变薄，但必要契约还在
+- `.qwen/QWEN.md` 继续保持更薄的宿主桥接定位
 - skill 主文件明显变短
 - 长资料按需加载
 - wrapper 继续保持很轻
@@ -688,8 +744,9 @@ ScholarAIO 最适合的路径不是：
 
 - `scholaraio/cli.py`
 - `scholaraio/ingest/pipeline.py`
-- `document` / `draw` / `setup` 大 skill
-- `AGENTS.md` / `CLAUDE.md`
+- `document` / `draw` 这类 reference-heavy 大 skill
+- `setup`（但只做保守分层，不拆核心策略）
+- `AGENTS.md` / `CLAUDE.md` / `.qwen/QWEN.md`
 
 #### 优先级 B：要保住、可当样板
 
@@ -717,13 +774,18 @@ docs/
     data-model.md
     agent-surfaces.md
     ingest-pipeline.md
+    search-and-index.md
+    skill-system.md
     toolref-architecture.md
   reference/
     cli.md
     skills.md
 
 AGENTS.md / CLAUDE.md
-  只放长期稳定规则、稳定入口、详细文档入口
+  薄目录 + 必要契约
+
+.qwen/QWEN.md
+  更薄的宿主特定桥接文件
 ```
 
 ### 10.4 skill 改写蓝图
@@ -759,6 +821,11 @@ description:
 - scripts/...
 ```
 
+补一句很关键的边界：
+
+- 对 `document` / `draw` 这类 reference-heavy skill，尽量按这个模板收口
+- 对 `setup` 这类 strategy-heavy skill，`关键边界` 必须继续保留推荐逻辑和用户沟通规则
+
 ### 10.5 自动守卫蓝图
 
 后面建议最少补这 5 类测试：
@@ -767,7 +834,8 @@ description:
 2. proceedings 数据流文档覆盖测试
 3. 插件目录树与 `ensure_dirs()` 一致性测试
 4. `toolref` 帮助文案与 source type 一致性测试
-5. 真实用户任务回放评测
+5. 最小黄金路径回放测试（前置到 `cli.py` / `pipeline.py` 拆分前）
+6. 扩展真实用户任务回放评测
 
 ---
 
