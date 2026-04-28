@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Diagram IR rendering robustness**: `diagram --from-ir` now accepts common `source` / `target` edge aliases in addition to the canonical `from` / `to` keys, and reports malformed edges as clean CLI errors instead of tracebacks.
 - **Fresh-layout docs and agent entries**: Slimmed agent entry docs into lightweight navigation surfaces, moved deeper runtime guidance into `docs/guide/agent-reference.md`, and aligned README, CLI docs, skills, and setup docs around explicit migration instead of implicit legacy runtime reads.
 - **Skill metadata and routing docs**: Normalized active project skill frontmatter to the cross-agent `name` + `description` shape, made descriptions trigger-focused, refreshed the skill harness validator, and fixed router wording that could steal explicit review-response requests.
 - **Runtime-layout migration correctness**: Fixed migration verification against real migrated libraries, empty legacy root cleanup, workspace output migration, and recovery/finalization edge cases found during repeated live CLI rehearsals.
