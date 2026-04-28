@@ -1350,6 +1350,7 @@ def test_internal_cli_wiring_commands_live_in_interface_namespace() -> None:
         ("cmd_document", "scholaraio.interfaces.cli.document"),
         ("cmd_export", "scholaraio.interfaces.cli.export"),
         ("cmd_diagram", "scholaraio.interfaces.cli.diagram"),
+        ("cmd_paper2any", "scholaraio.interfaces.cli.paper2any"),
         ("cmd_setup", "scholaraio.interfaces.cli.setup"),
         ("cmd_index", "scholaraio.interfaces.cli.index"),
         ("cmd_search", "scholaraio.interfaces.cli.search"),

@@ -45,7 +45,7 @@ Representative skills to check first:
 
 - Core research: `search`, `show`, `ingest`, `workspace`, `audit`, `translate`
 - Writing: `academic-writing`, `literature-review`, `paper-guided-reading`, `paper-writing`, `citation-check`, `writing-polish`, `review-response`, `research-gap`, `poster`, `technical-report`
-- Outputs and tooling: `draw`, `document`, `publish`, `websearch`, `webextract`, `scientific-runtime`, `scientific-tool-onboarding`
+- Outputs and tooling: `draw`, `document`, `paper2any`, `publish`, `websearch`, `webextract`, `scientific-runtime`, `scientific-tool-onboarding`
 
 If a workflow has grown into a reusable playbook, move it into a skill instead of expanding this file.
 
@@ -94,6 +94,7 @@ High-signal canonical implementation pointers:
 - `scholaraio show --help`
 - `scholaraio pipeline --help`
 - `scholaraio ws --help`
+- `scholaraio paper2any --help`
 - `scholaraio migrate --help`
 - `scholaraio migrate upgrade --help`
 - `scholaraio migrate finalize --help`

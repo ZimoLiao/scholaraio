@@ -33,6 +33,7 @@ Common skills:
 - `citation-check`: verify whether citations are real and correctly matched
 - `draw`: generate diagrams and figures
 - `document`: generate or inspect Office documents
+- `paper2any`: prepare external Paper2Any figure and slide handoff bundles
 - `scientific-runtime`: serve scientific CLI tasks with safer runtime grounding
 
 ## Common CLI Entry Points

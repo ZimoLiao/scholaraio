@@ -47,7 +47,7 @@ Representative skills:
 
 - Core research: `search`, `show`, `ingest`, `workspace`, `audit`, `translate`
 - Writing: `academic-writing`, `literature-review`, `paper-guided-reading`, `paper-writing`, `citation-check`, `writing-polish`, `review-response`, `research-gap`, `poster`, `technical-report`
-- Outputs and tooling: `draw`, `document`, `publish`, `scientific-runtime`, `scientific-tool-onboarding`
+- Outputs and tooling: `draw`, `document`, `paper2any`, `publish`, `scientific-runtime`, `scientific-tool-onboarding`
 
 ## Repo And Module Map
 

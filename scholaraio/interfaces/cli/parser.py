@@ -36,6 +36,7 @@ def _build_parser() -> argparse.ArgumentParser:
     cmd_export = cli_mod.cmd_export
     cmd_diagram = cli_mod.cmd_diagram
     cmd_document = cli_mod.cmd_document
+    cmd_paper2any = cli_mod.cmd_paper2any
     cmd_fsearch = cli_mod.cmd_fsearch
     cmd_import_endnote = cli_mod.cmd_import_endnote
     cmd_import_zotero = cli_mod.cmd_import_zotero
@@ -758,6 +759,66 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=3,
         help="Maximum Critic iterations (default: 3; only used with --critic)",
+    )
+
+    # --- paper2any ---
+    p_paper2any = sub.add_parser("paper2any", help="Prepare handoff bundles for external Paper2Any runs")
+    p_paper2any.set_defaults(func=cmd_paper2any)
+    p_paper2any_sub = p_paper2any.add_subparsers(dest="paper2any_action", required=True)
+
+    p_paper2any_prepare = p_paper2any_sub.add_parser(
+        "prepare",
+        help="Prepare a Paper2Any handoff bundle",
+        description="Prepare a Paper2Any handoff bundle",
+    )
+    p_paper2any_prepare.add_argument("paper_id", help="Paper ID (directory name / UUID / DOI)")
+    p_paper2any_prepare.add_argument(
+        "--task",
+        choices=["figure", "ppt", "pdf2ppt"],
+        default="figure",
+        help="Paper2Any workflow to prepare (default: figure)",
+    )
+    p_paper2any_prepare.add_argument(
+        "--graph-type",
+        choices=["model_arch", "tech_route", "exp_data"],
+        default="model_arch",
+        help="Paper2Figure graph type when --task figure (default: model_arch)",
+    )
+    p_paper2any_prepare.add_argument(
+        "--input",
+        dest="input_preference",
+        choices=["auto", "pdf", "markdown"],
+        default="auto",
+        help="Input source preference (default: auto; PDF preferred, Markdown fallback)",
+    )
+    p_paper2any_prepare.add_argument(
+        "--out-dir",
+        type=str,
+        default=None,
+        help="Bundle root (default: <workspace>/_system/paper2any/)",
+    )
+    p_paper2any_prepare.add_argument(
+        "--paper2any-root",
+        type=str,
+        default=None,
+        help="External Paper2Any checkout path baked into the generated runner",
+    )
+    p_paper2any_prepare.add_argument(
+        "--page-count",
+        type=int,
+        default=None,
+        help="Target slide count for ppt/pdf2ppt tasks",
+    )
+    p_paper2any_prepare.add_argument(
+        "--language",
+        choices=["en", "zh"],
+        default=None,
+        help="Output language passed to Paper2Any",
+    )
+    p_paper2any_prepare.add_argument(
+        "--style",
+        default=None,
+        help="Style prompt passed to Paper2Any",
     )
 
     # --- enrich-l3 ---

@@ -292,6 +292,16 @@ class TestCliHelpLocalization:
         assert "workspace/_system/translation-bundles/" in translate_help
         assert "workspace/translation-ws/" not in translate_help
 
+    def test_paper2any_prepare_help_describes_handoff_options(self):
+        parser = cli._build_parser()
+        paper2any_parser = parser._subparsers._group_actions[0].choices["paper2any"]
+        prepare_help = paper2any_parser._subparsers._group_actions[0].choices["prepare"].format_help()
+
+        assert "Prepare a Paper2Any handoff bundle" in prepare_help
+        assert "--paper2any-root" in prepare_help
+        assert "--task" in prepare_help
+        assert "<workspace>/_system/paper2any/" in prepare_help
+
 
 class TestWebsearchCli:
     def test_cmd_websearch_exits_on_service_unavailable(self, monkeypatch):

@@ -109,6 +109,7 @@ scholaraio toolref
 scholaraio arxiv
 scholaraio document
 scholaraio diagram
+scholaraio paper2any
 scholaraio style
 scholaraio backup
 ```
@@ -118,6 +119,7 @@ scholaraio backup
 - `arxiv` supports arXiv search and PDF fetch.
 - `document` provides Office-document utilities such as inspection.
 - `diagram` generates editable scientific diagrams from paper content or structured text.
+- `paper2any` prepares handoff bundles that run an external Paper2Any checkout on ScholarAIO papers.
 - `style` manages citation styles.
 - `backup` lists configured rsync targets and runs a named backup plan.
 - `backup run` is intentionally non-interactive: SSH is launched with `BatchMode=yes`, so key-based auth and host trust must already be prepared.
