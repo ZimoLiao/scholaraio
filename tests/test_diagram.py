@@ -295,6 +295,29 @@ class TestRenderIrDispatcher:
         with pytest.raises(ValueError, match="Unsupported render format"):
             render_ir(sample_ir, "png")
 
+    def test_source_target_edge_aliases_are_accepted(self):
+        ir = {
+            "title": "Alias",
+            "nodes": [{"id": "a", "label": "A"}, {"id": "b", "label": "B"}],
+            "edges": [{"source": "a", "target": "b", "label": "flow"}],
+            "layout_hint": "horizontal",
+        }
+
+        text = render_ir(ir, "mermaid")
+
+        assert 'a -->|"flow"| b' in text
+
+    def test_invalid_edge_reports_clean_error(self):
+        ir = {
+            "title": "Bad Edge",
+            "nodes": [{"id": "a", "label": "A"}],
+            "edges": [{"source": "a"}],
+            "layout_hint": "horizontal",
+        }
+
+        with pytest.raises(ValueError, match="each edge must include from/to"):
+            render_ir(ir, "mermaid")
+
 
 # ---------------------------------------------------------------------------
 # generate_diagram

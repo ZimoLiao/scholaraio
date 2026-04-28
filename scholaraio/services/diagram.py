@@ -270,6 +270,27 @@ def _register(fmt: str) -> Callable[[Renderer], Renderer]:
     return wrapper
 
 
+def _normalize_ir_edges(ir: dict) -> dict:
+    """Return an IR copy whose edges use the canonical from/to keys."""
+    normalized = dict(ir)
+    edges = []
+    for idx, edge in enumerate(ir.get("edges", []), start=1):
+        if not isinstance(edge, dict):
+            raise ValueError(f"Invalid diagram IR edge #{idx}: expected an object")
+        current = dict(edge)
+        if "from" not in current and "source" in current:
+            current["from"] = current["source"]
+        if "to" not in current and "target" in current:
+            current["to"] = current["target"]
+        if "from" not in current or "to" not in current:
+            raise ValueError(
+                f"Invalid diagram IR edge #{idx}: each edge must include from/to (source/target aliases are accepted)"
+            )
+        edges.append(current)
+    normalized["edges"] = edges
+    return normalized
+
+
 def list_renderers() -> list[str]:
     """返回当前支持的所有渲染格式列表。"""
     return list(_RENDERERS.keys())
@@ -570,7 +591,7 @@ def render_ir(ir: dict, fmt: str, out_path: Path | None = None) -> Path | str:
     """
     if fmt not in _RENDERERS:
         raise ValueError(f"Unsupported render format: {fmt} (supported: {', '.join(_RENDERERS.keys())})")
-    return _RENDERERS[fmt](ir, out_path)
+    return _RENDERERS[fmt](_normalize_ir_edges(ir), out_path)
 
 
 # ---------------------------------------------------------------------------
