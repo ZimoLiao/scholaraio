@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from argparse import Namespace
 from pathlib import Path
 
@@ -79,7 +80,78 @@ def test_prepare_paper2any_bundle_can_use_markdown_input(tmp_path: Path) -> None
     assert manifest["input"]["kind"] == "markdown"
     assert manifest["input"]["paper2any_input_type"] == "TEXT"
     script = result.script_path.read_text(encoding="utf-8")
-    assert 'PAPER2ANY_INPUT="$(cat "$INPUT_PATH")"' in script
+    assert 'PAPER2ANY_INPUT="$(cat "$INPUT_PATH")"' not in script
+    assert 'Path(os.environ["INPUT_PATH"]).read_text' in script
+    assert "runpy.run_module" in script
+    assert "    'python'," not in script
+
+
+def test_markdown_runner_passes_file_contents_inside_python_process(tmp_path: Path) -> None:
+    from scholaraio.services.paper2any import prepare_paper2any_bundle
+
+    cfg = _build_config({}, tmp_path)
+    paper = _write_paper(tmp_path / "data" / "libraries" / "papers", with_pdf=False)
+    markdown = "# Paper2Any Integration Smoke\n\n" + ("Body text.\n" * 2000)
+    (paper / "paper.md").write_text(markdown, encoding="utf-8")
+    paper2any_root = tmp_path / "Paper2Any"
+    script_dir = paper2any_root / "script"
+    script_dir.mkdir(parents=True)
+    (script_dir / "__init__.py").write_text("", encoding="utf-8")
+    (script_dir / "run_paper2figure_cli.py").write_text(
+        """
+import argparse
+import json
+from pathlib import Path
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", required=True)
+    parser.add_argument("--input-type", required=True)
+    parser.add_argument("--graph-type", required=True)
+    parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--api-key")
+    args = parser.parse_args()
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "received.json").write_text(
+        json.dumps(
+            {
+                "input": args.input,
+                "input_type": args.input_type,
+                "graph_type": args.graph_type,
+                "api_key": args.api_key,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    result = prepare_paper2any_bundle(
+        paper,
+        cfg,
+        task="figure",
+        input_preference="markdown",
+        out_dir=tmp_path / "bundles",
+        paper2any_root=paper2any_root,
+    )
+
+    subprocess.run([str(result.script_path), "--api-key", "fake-key"], check=True)
+
+    received = json.loads((result.output_dir / "received.json").read_text(encoding="utf-8"))
+    assert received == {
+        "input": markdown,
+        "input_type": "TEXT",
+        "graph_type": "model_arch",
+        "api_key": "fake-key",
+    }
 
 
 def test_cmd_paper2any_prepare_resolves_paper_and_reports_bundle(tmp_path: Path, monkeypatch) -> None:

@@ -186,11 +186,7 @@ def _build_command(
     language: str | None,
     style: str | None,
 ) -> list[str]:
-    script = {
-        "figure": "script/run_paper2figure_cli.py",
-        "ppt": "script/run_paper2ppt_cli.py",
-        "pdf2ppt": "script/run_pdf2ppt_cli.py",
-    }[task]
+    script = _paper2any_script(task)
     command = ["python", script, "--input", input_value]
     input_type = _paper2any_input_type(task, input_kind)
     if input_type:
@@ -205,6 +201,18 @@ def _build_command(
         command.extend(["--style", style])
     command.extend(["--output-dir", str(output_dir)])
     return command
+
+
+def _paper2any_script(task: str) -> str:
+    return {
+        "figure": "script/run_paper2figure_cli.py",
+        "ppt": "script/run_paper2ppt_cli.py",
+        "pdf2ppt": "script/run_pdf2ppt_cli.py",
+    }[task]
+
+
+def _paper2any_module(task: str) -> str:
+    return _paper2any_script(task).removesuffix(".py").replace("/", ".")
 
 
 def _render_runner_script(
@@ -254,9 +262,40 @@ def _render_runner_script(
         f'echo "Paper2Any input: {input_type} ($INPUT_PATH)"',
     ]
     if input_kind == "markdown":
-        lines.append('PAPER2ANY_INPUT="$(cat "$INPUT_PATH")"')
-    else:
-        lines.append('PAPER2ANY_INPUT="$INPUT_PATH"')
+        lines.extend(
+            [
+                "export INPUT_PATH OUTPUT_DIR",
+                "",
+                'cd "$PAPER2ANY_ROOT"',
+                "python - \"$@\" <<'PY'",
+                "import os",
+                "import runpy",
+                "import sys",
+                "from pathlib import Path",
+                "",
+                'input_text = Path(os.environ["INPUT_PATH"]).read_text(encoding="utf-8")',
+                "passthrough_args = sys.argv[1:]",
+                "sys.argv = [",
+            ]
+        )
+        for token in command[1:]:
+            if token == "$PAPER2ANY_INPUT":
+                lines.append("    input_text,")
+            elif token == str(output_dir):
+                lines.append('    os.environ["OUTPUT_DIR"],')
+            else:
+                lines.append(f"    {token!r},")
+        lines.extend(
+            [
+                "] + passthrough_args",
+                f'runpy.run_module("{_paper2any_module(task)}", run_name="__main__")',
+                "PY",
+                "",
+            ]
+        )
+        return "\n".join(lines)
+
+    lines.append('PAPER2ANY_INPUT="$INPUT_PATH"')
     lines.extend(
         [
             "",
