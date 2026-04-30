@@ -39,6 +39,7 @@ _S: dict[str, dict[Lang, str]] = {
     "pdf_deps": {"en": "PDF deps", "zh": "PDF 依赖"},
     "office_deps": {"en": "Office deps", "zh": "Office 依赖"},
     "draw_deps": {"en": "Draw deps", "zh": "绘图依赖"},
+    "paper2any": {"en": "Paper2Any", "zh": "Paper2Any"},
     "config_yaml": {"en": "config.yaml", "zh": "config.yaml"},
     "llm_key": {"en": "LLM API key", "zh": "LLM API key"},
     "mineru": {"en": "MinerU", "zh": "MinerU"},
@@ -486,6 +487,17 @@ def run_check(cfg: Config | None = None, lang: Lang = "zh") -> list[CheckResult]
     results.append(CheckResult(t("huggingface", lang), hf_ok, hf_detail))
     parser_name, reason = recommend_pdf_parser(mineru_status.recommendable, hf_ok, lang)
     results.append(CheckResult(t("parser_recommendation", lang), True, f"{parser_name}: {reason}"))
+
+    from scholaraio.services.paper2any_runtime import check_paper2any_status
+
+    paper2any_status = check_paper2any_status(cfg)
+    if paper2any_status.ready:
+        paper2any_detail = f"{paper2any_status.detail}: {paper2any_status.root}"
+    else:
+        paper2any_detail = (
+            f"{paper2any_status.detail}. Run: scholaraio paper2any setup (managed root: {paper2any_status.root})"
+        )
+    results.append(CheckResult(t("paper2any", lang), paper2any_status.ready, paper2any_detail))
 
     # Contact email
     email = cfg.ingest.contact_email

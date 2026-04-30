@@ -169,6 +169,22 @@ def test_run_check_includes_pdf_office_and_draw_dependency_groups(monkeypatch):
     assert "绘图依赖" in labels
 
 
+def test_run_check_includes_paper2any_runtime_status(monkeypatch, tmp_path):
+    cfg = Config()
+    cfg._root = tmp_path
+    monkeypatch.setattr("scholaraio.services.setup._check_mineru", lambda *_: (True, "mineru ok"))
+    monkeypatch.setattr("scholaraio.services.setup._check_docling", lambda *_: (True, "docling ok"))
+    monkeypatch.setattr("scholaraio.services.setup._check_huggingface", lambda *_: (True, "hf ok"))
+    monkeypatch.setattr("scholaraio.services.setup.recommend_pdf_parser", lambda *args: ("MinerU", "both reachable"))
+
+    results = run_check(cfg, "zh")
+
+    result_map = {item.label: item for item in results}
+    assert "Paper2Any" in result_map
+    assert result_map["Paper2Any"].ok is False
+    assert "scholaraio paper2any setup" in result_map["Paper2Any"].detail
+
+
 def test_run_check_includes_optional_api_configuration_statuses(monkeypatch):
     cfg = Config()
     monkeypatch.setattr("scholaraio.services.setup._check_mineru", lambda *_: (True, "mineru ok"))

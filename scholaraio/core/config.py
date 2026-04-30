@@ -412,6 +412,23 @@ class PublishConfig:
 
 
 @dataclass
+class Paper2AnyConfig:
+    """External Paper2Any runtime configuration.
+
+    Attributes:
+        root: External Paper2Any checkout root. Empty means use the managed
+            default under ``runtime_root/extensions/paper2any/Paper2Any``.
+        repo_url: Git URL used by ``scholaraio paper2any setup``.
+        install_command: Pip-style install command run inside the checkout
+            virtualenv. Kept as data so agents can adapt without changing code.
+    """
+
+    root: str = ""
+    repo_url: str = "https://github.com/OpenDCAI/Paper2Any.git"
+    install_command: list[str] = field(default_factory=lambda: ["-m", "pip", "install", "-e", "."])
+
+
+@dataclass
 class Config:
     """ScholarAIO 全局配置，由 :func:`load_config` 构建。
 
@@ -431,6 +448,7 @@ class Config:
         backup: 备份配置。
         openalex: OpenAlex API 配置。
         publish: 发布站点配置。
+        paper2any: 外部 Paper2Any runtime 配置。
     """
 
     paths: PathsConfig = field(default_factory=PathsConfig)
@@ -448,6 +466,7 @@ class Config:
     backup: BackupConfig = field(default_factory=BackupConfig)
     openalex: OpenAlexConfig = field(default_factory=OpenAlexConfig)
     publish: PublishConfig = field(default_factory=PublishConfig)
+    paper2any: Paper2AnyConfig = field(default_factory=Paper2AnyConfig)
 
     # Root directory of the config file (used to resolve relative paths)
     _root: Path = field(default_factory=Path.cwd, repr=False, compare=False)
@@ -656,6 +675,13 @@ class Config:
     def publish_site_output_dir(self) -> Path | None:
         """Explicit alias for the publish-site output directory."""
         return self.site_output_dir
+
+    @property
+    def paper2any_root(self) -> Path:
+        """External Paper2Any checkout root."""
+        if self.paper2any.root:
+            return self._resolve_path(self.paper2any.root)
+        return (self.runtime_root / "extensions" / "paper2any" / "Paper2Any").resolve()
 
     def ensure_dirs(self) -> None:
         """创建运行所需的目录（paper library, spool queues, workspace 等）。"""
@@ -1189,6 +1215,17 @@ def _build_config(data: dict, root: Path) -> Config:
         published_dir=str(publish_data.get("published_dir") or "published").strip() or "published",
     )
 
+    paper2any_data = data.get("paper2any", {}) or {}
+    paper2any = Paper2AnyConfig(
+        root=str(paper2any_data.get("root") or "").strip(),
+        repo_url=str(paper2any_data.get("repo_url") or "https://github.com/OpenDCAI/Paper2Any.git").strip()
+        or "https://github.com/OpenDCAI/Paper2Any.git",
+        install_command=_coerce_str_list(
+            paper2any_data.get("install_command"),
+            default=["-m", "pip", "install", "-e", "."],
+        ),
+    )
+
     return Config(
         paths=paths,
         llm=llm,
@@ -1205,6 +1242,7 @@ def _build_config(data: dict, root: Path) -> Config:
         backup=backup,
         openalex=openalex,
         publish=publish,
+        paper2any=paper2any,
         _root=root,
     )
 

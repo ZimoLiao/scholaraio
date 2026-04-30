@@ -135,6 +135,17 @@ publish:
   site_output_dir: null # Optional default for `scholaraio publish-site --out-dir`
   published_dir: published # Local audited archive root; git-ignored by this repo
 
+# External Paper2Any runtime 外部 Paper2Any 运行时
+paper2any:
+  # Non-developer users should run `scholaraio paper2any setup`; it clones
+  # Paper2Any under data/runtime/extensions/paper2any/Paper2Any, creates an
+  # isolated runtime there, installs standalone CLI/frontend export dependencies,
+  # and records overrides in config.local.yaml.
+  # 非开发者直接运行 `scholaraio paper2any setup`；ScholarAIO 会把外部组件放到
+  # data/runtime/extensions/paper2any/Paper2Any，并把本机覆盖写入 config.local.yaml。
+  root: null
+  repo_url: https://github.com/OpenDCAI/Paper2Any.git
+
 # OpenAlex API key (optional, enables higher rate limits)
 # openalex:
 #   api_key: null  # -> config.local.yaml or env OPENALEX_API_KEY

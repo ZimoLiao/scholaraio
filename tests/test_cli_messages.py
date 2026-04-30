@@ -300,7 +300,28 @@ class TestCliHelpLocalization:
         assert "Prepare a Paper2Any handoff bundle" in prepare_help
         assert "--paper2any-root" in prepare_help
         assert "--task" in prepare_help
+        assert "--source-file" in prepare_help
+        assert "image2ppt" in prepare_help
+        assert "ppt2polish" in prepare_help
+        assert "poster" in prepare_help
+        assert "video" in prepare_help
         assert "<workspace>/_system/paper2any/" in prepare_help
+
+    def test_paper2any_help_exposes_managed_setup_and_status(self):
+        parser = cli._build_parser()
+        paper2any_parser = parser._subparsers._group_actions[0].choices["paper2any"]
+        actions = paper2any_parser._subparsers._group_actions[0].choices
+
+        setup_help = actions["setup"].format_help()
+        status_help = actions["status"].format_help()
+        serve_help = actions["serve"].format_help()
+
+        assert "Install or update the external Paper2Any runtime" in setup_help
+        assert "--skip-install" in setup_help
+        assert "Show Paper2Any runtime status" in status_help
+        assert "Start the Paper2Any FastAPI backend" in serve_help
+        assert "--port" in serve_help
+        assert "capabilities" in actions
 
 
 class TestWebsearchCli:

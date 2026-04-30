@@ -109,7 +109,11 @@ scholaraio toolref
 scholaraio arxiv
 scholaraio document
 scholaraio diagram
-scholaraio paper2any
+scholaraio paper2any setup
+scholaraio paper2any status
+scholaraio paper2any capabilities
+scholaraio paper2any serve
+scholaraio paper2any prepare
 scholaraio style
 scholaraio backup
 ```
@@ -119,7 +123,14 @@ scholaraio backup
 - `arxiv` supports arXiv search and PDF fetch.
 - `document` provides Office-document utilities such as inspection.
 - `diagram` generates editable scientific diagrams from paper content or structured text.
-- `paper2any` prepares handoff bundles that run an external Paper2Any checkout on ScholarAIO papers.
+- `paper2any setup` installs or updates the managed external Paper2Any runtime under `data/runtime/extensions/paper2any/Paper2Any`, including the isolated Python runtime and frontend PPT export dependencies.
+- `paper2any status` reports whether the checkout, upstream scripts, isolated Python runtime, and frontend export dependencies are ready.
+- `paper2any capabilities` lists both supported standalone CLI workflows and API-only upstream Paper2Any workflows.
+- `paper2any serve` starts the real upstream Paper2Any FastAPI backend from the managed venv so API workflows such as DrawIO, rebuttal, citation, mindmap, image playground, and KB workflows are reachable without manual dependency setup.
+- `paper2any prepare` creates handoff bundles under `workspace/_system/paper2any/` that run the real upstream Paper2Any CLI on ScholarAIO papers.
+  It covers Paper2Any's standalone CLI scripts: `--task figure`, `ppt`, `ppt-classic`, `pdf2ppt`, `image2ppt`, `ppt2polish`, `poster`, and `video`.
+  Use `--source-file` when the upstream task starts from a local asset rather than `paper.pdf` or `paper.md`, for example image-to-PPT or PPT polishing.
+  Upstream Paper2Any also includes FastAPI/KB workflows such as citation, technical report, rebuttal, DrawIO, mindmap, podcast, and deep research; use `paper2any serve` for those service routes instead of a `prepare` bundle.
 - `style` manages citation styles.
 - `backup` lists configured rsync targets and runs a named backup plan.
 - `backup run` is intentionally non-interactive: SSH is launched with `BatchMode=yes`, so key-based auth and host trust must already be prepared.

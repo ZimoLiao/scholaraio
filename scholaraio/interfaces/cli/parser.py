@@ -762,9 +762,88 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     # --- paper2any ---
-    p_paper2any = sub.add_parser("paper2any", help="Prepare handoff bundles for external Paper2Any runs")
+    p_paper2any = sub.add_parser("paper2any", help="Manage external Paper2Any runtime and handoff bundles")
     p_paper2any.set_defaults(func=cmd_paper2any)
     p_paper2any_sub = p_paper2any.add_subparsers(dest="paper2any_action", required=True)
+
+    p_paper2any_setup = p_paper2any_sub.add_parser(
+        "setup",
+        help="Install or update the external Paper2Any runtime",
+        description="Install or update the external Paper2Any runtime",
+    )
+    p_paper2any_setup.add_argument(
+        "--root",
+        type=str,
+        default=None,
+        help="Managed checkout root (default: <runtime>/extensions/paper2any/Paper2Any)",
+    )
+    p_paper2any_setup.add_argument(
+        "--repo-url",
+        type=str,
+        default=None,
+        help="Paper2Any Git repository URL (default from config)",
+    )
+    p_paper2any_setup.add_argument(
+        "--skip-install",
+        action="store_true",
+        help="Clone or update only; do not create the isolated Python runtime",
+    )
+    p_paper2any_setup.add_argument(
+        "--update",
+        action="store_true",
+        help="Run git pull --ff-only when the checkout already exists",
+    )
+    p_paper2any_setup.add_argument(
+        "--no-save-config",
+        action="store_true",
+        help="Do not write paper2any.root to config.local.yaml",
+    )
+
+    p_paper2any_status = p_paper2any_sub.add_parser(
+        "status",
+        help="Show Paper2Any runtime status",
+        description="Show Paper2Any runtime status",
+    )
+    p_paper2any_status.add_argument(
+        "--root",
+        type=str,
+        default=None,
+        help="Check a specific Paper2Any checkout root",
+    )
+
+    p_paper2any_capabilities = p_paper2any_sub.add_parser(
+        "capabilities",
+        help="List supported Paper2Any CLI and API capabilities",
+        description="List supported Paper2Any CLI and API capabilities",
+    )
+
+    p_paper2any_serve = p_paper2any_sub.add_parser(
+        "serve",
+        help="Start the Paper2Any FastAPI backend",
+        description="Start the Paper2Any FastAPI backend",
+    )
+    p_paper2any_serve.add_argument(
+        "--root",
+        type=str,
+        default=None,
+        help="Use a specific Paper2Any checkout root",
+    )
+    p_paper2any_serve.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Host address for the Paper2Any FastAPI backend (default: 127.0.0.1)",
+    )
+    p_paper2any_serve.add_argument(
+        "--port",
+        type=int,
+        default=9999,
+        help="Port for the Paper2Any FastAPI backend (default: 9999)",
+    )
+    p_paper2any_serve.add_argument(
+        "--reload",
+        action="store_true",
+        help="Pass --reload to uvicorn",
+    )
 
     p_paper2any_prepare = p_paper2any_sub.add_parser(
         "prepare",
@@ -774,7 +853,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_paper2any_prepare.add_argument("paper_id", help="Paper ID (directory name / UUID / DOI)")
     p_paper2any_prepare.add_argument(
         "--task",
-        choices=["figure", "ppt", "pdf2ppt"],
+        choices=["figure", "ppt", "ppt-classic", "pdf2ppt", "image2ppt", "ppt2polish", "poster", "video"],
         default="figure",
         help="Paper2Any workflow to prepare (default: figure)",
     )
@@ -790,6 +869,12 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["auto", "pdf", "markdown"],
         default="auto",
         help="Input source preference (default: auto; PDF preferred, Markdown fallback)",
+    )
+    p_paper2any_prepare.add_argument(
+        "--source-file",
+        type=str,
+        default=None,
+        help="Explicit local input file for image2ppt, ppt2polish, or file-based Paper2Any tasks",
     )
     p_paper2any_prepare.add_argument(
         "--out-dir",
