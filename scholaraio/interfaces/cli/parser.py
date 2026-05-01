@@ -54,6 +54,7 @@ def _build_parser() -> argparse.ArgumentParser:
     cmd_translate = cli_mod.cmd_translate
     cmd_websearch = cli_mod.cmd_websearch
     cmd_webextract = cli_mod.cmd_webextract
+    cmd_paper2any = cli_mod.cmd_paper2any
     cmd_backup = cli_mod.cmd_backup
     cmd_metrics = cli_mod.cmd_metrics
     cmd_publish_site = cli_mod.cmd_publish_site
@@ -596,6 +597,74 @@ def _build_parser() -> argparse.ArgumentParser:
     p_wext.add_argument("--pdf", action="store_true", help="Treat the target as a PDF file")
     p_wext.add_argument("--full", action="store_true", help="Print the full extraction result without truncation")
     p_wext.add_argument("--max-chars", type=int, default=4000, help="Maximum preview characters (default: 4000)")
+
+    # --- paper2any ---
+    p_paper2any = sub.add_parser("paper2any", help="Paper2Any MCP sidecar integration")
+    p_paper2any.set_defaults(func=cmd_paper2any)
+    p_paper2any_sub = p_paper2any.add_subparsers(dest="paper2any_action", required=True)
+
+    p_paper2any_setup = p_paper2any_sub.add_parser(
+        "setup",
+        help="Prepare the external Paper2Any runtime extension",
+        description="Prepare the external Paper2Any runtime extension",
+    )
+    p_paper2any_setup.add_argument("--paper2any-root", default="", help="External OpenDCAI/Paper2Any checkout")
+    p_paper2any_setup.add_argument(
+        "--repo-url",
+        default="https://github.com/OpenDCAI/Paper2Any.git",
+        help="Upstream Paper2Any git URL",
+    )
+    p_paper2any_setup.add_argument("--ref", default="main", help="Upstream git branch, tag, or ref")
+    p_paper2any_setup.add_argument("--update", action="store_true", help="Fetch and checkout the requested ref")
+    p_paper2any_setup.add_argument(
+        "--install-runtime",
+        action="store_true",
+        help="Install Paper2Any requirements into an isolated runtime venv",
+    )
+    p_paper2any_setup.add_argument("--python", default=None, help="Python executable used to create the runtime venv")
+    p_paper2any_setup.add_argument("--dry-run", action="store_true", help="Show planned setup actions")
+
+    p_paper2any_serve = p_paper2any_sub.add_parser(
+        "mcp-serve",
+        help="Start the lightweight Paper2Any MCP sidecar",
+        description="Start the lightweight Paper2Any MCP sidecar",
+    )
+    p_paper2any_serve.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
+    p_paper2any_serve.add_argument("--port", type=int, default=8770, help="Bind port (default: 8770)")
+    p_paper2any_serve.add_argument("--paper2any-root", default="", help="External OpenDCAI/Paper2Any checkout")
+    p_paper2any_serve.add_argument("--backend-url", default="", help="Running Paper2Any FastAPI backend URL")
+    p_paper2any_serve.add_argument("--backend-api-key", default="", help="Paper2Any backend X-API-Key")
+    p_paper2any_serve.add_argument("--bearer-token", default="", help="Optional MCP bearer token")
+    p_paper2any_serve.add_argument("--timeout", type=int, default=120, help="Backend/CLI timeout in seconds")
+
+    p_paper2any_backend = p_paper2any_sub.add_parser(
+        "backend-serve",
+        help="Start the real upstream Paper2Any FastAPI backend",
+        description="Start the real upstream Paper2Any FastAPI backend",
+    )
+    p_paper2any_backend.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
+    p_paper2any_backend.add_argument("--port", type=int, default=8000, help="Bind port (default: 8000)")
+    p_paper2any_backend.add_argument("--paper2any-root", default="", help="External OpenDCAI/Paper2Any checkout")
+    p_paper2any_backend.add_argument("--backend-api-key", default="", help="Paper2Any backend X-API-Key")
+    p_paper2any_backend.add_argument("--python", default="", help="Python executable used to run uvicorn")
+
+    p_paper2any_status = p_paper2any_sub.add_parser("status", help="Check the Paper2Any MCP sidecar")
+    del p_paper2any_status
+
+    p_paper2any_tools = p_paper2any_sub.add_parser("tools", help="List Paper2Any MCP tools")
+    del p_paper2any_tools
+
+    p_paper2any_call = p_paper2any_sub.add_parser(
+        "call",
+        help="Call a Paper2Any MCP tool",
+        description="Call a Paper2Any MCP tool",
+    )
+    p_paper2any_call.add_argument("tool", help="MCP tool name, for example paper2any_capabilities")
+    p_paper2any_call.add_argument(
+        "--arguments-json",
+        default="{}",
+        help='Tool arguments as a JSON object (default: "{}")',
+    )
 
     # --- ingest-link ---
     p_ingest_link = sub.add_parser(

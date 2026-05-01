@@ -25,6 +25,7 @@ from scholaraio.interfaces.cli import import_zotero as _import_zotero_cli
 from scholaraio.interfaces.cli import ingest_link as _ingest_link_cli
 from scholaraio.interfaces.cli import output as _output_cli
 from scholaraio.interfaces.cli import paper as _paper_cli
+from scholaraio.interfaces.cli import paper2any as _paper2any_cli
 from scholaraio.interfaces.cli import parser as _parser_cli
 from scholaraio.interfaces.cli import paths as _paths_cli
 from scholaraio.interfaces.cli import publish as _publish_cli
@@ -86,6 +87,7 @@ _toc_success_message = _enrich_cli._toc_success_message
 _run_batch_enrich = _enrich_cli._run_batch_enrich
 cmd_websearch = _web_cli.cmd_websearch
 cmd_webextract = _web_cli.cmd_webextract
+cmd_paper2any = _paper2any_cli.cmd_paper2any
 _terminal_preview = _web_cli._terminal_preview
 cmd_explore = _explore_cli.cmd_explore
 _explore_root = _explore_cli._explore_root
@@ -191,6 +193,7 @@ __all__ = [
     "cmd_insights",
     "cmd_metrics",
     "cmd_migrate",
+    "cmd_paper2any",
     "cmd_patent_fetch",
     "cmd_patent_search",
     "cmd_pipeline",

@@ -38,6 +38,10 @@ scholaraio pipeline [preset]
 scholaraio ingest-link <url> [<url> ...]
 scholaraio websearch <query> [--count N]
 scholaraio webextract <url> [--pdf] [--full] [--max-chars N]
+scholaraio paper2any setup [--install-runtime]
+scholaraio paper2any mcp-serve
+scholaraio paper2any backend-serve
+scholaraio paper2any status|tools|call
 scholaraio patent-search <query> [--count N]
 scholaraio patent-fetch <publication-number-or-url>
 scholaraio enrich-toc
@@ -52,6 +56,7 @@ scholaraio attach-pdf
 - `ingest-link` pulls one or more rendered web URLs or online PDFs through an external `qt-web-extractor` service and routes them into the existing document ingest flow.
 - `websearch` performs live web search through an external `GUILessBingSearch` service; prefer `websearch.transport: mcp` with the `search_bing` tool when available, while the legacy HTTP `/search` transport remains supported.
 - `webextract` extracts rendered web content through `qt-web-extractor`; prefer `webextract.transport: mcp` with the `fetch_url` tool for agent workflows, while the legacy HTTP `/extract` transport remains supported. By default it prints a preview, and `--full` expands to the full body.
+- `paper2any` starts and calls the lightweight MCP sidecar for an external OpenDCAI/Paper2Any checkout. Use it for real Paper2Any paper-to-figure, PPT, poster, video, citation, rebuttal, DrawIO, mindmap, PDF-to-PPT, image-to-PPT, and KB workflows without vendoring Paper2Any into ScholarAIO.
 - `patent-search` discovers patent candidates through USPTO PPUBS by default, with optional ODP API support.
 - `patent-fetch` downloads a patent PDF into the configured patent inbox for the normal patent ingest flow.
 - `refetch` refreshes citation counts, bibliographic metadata, and structured `references` for already ingested papers.
