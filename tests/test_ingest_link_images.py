@@ -74,6 +74,37 @@ def test_localize_ingest_link_images_rejects_non_image_responses(tmp_path: Path)
     assert "unsupported image content type" in (result.images[0].error or "")
 
 
+def test_read_url_bytes_preserves_missing_content_type_as_ambiguous(monkeypatch: pytest.MonkeyPatch) -> None:
+    from email.message import Message
+
+    from scholaraio.services.ingest import link_images
+
+    class FakeResponse:
+        headers = Message()
+        headers["Server"] = "example"
+
+        def __enter__(self) -> FakeResponse:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self, limit: int) -> bytes:
+            assert limit == link_images.MAX_IMAGE_BYTES + 1
+            return b"fake-png"
+
+    def fake_urlopen(request: object, *, timeout: float) -> FakeResponse:
+        assert timeout == 1.5
+        return FakeResponse()
+
+    monkeypatch.setattr(link_images.urllib.request, "urlopen", fake_urlopen)
+
+    payload, content_type = link_images._read_url_bytes("https://example.com/plot.png", timeout=1.5)
+
+    assert payload == b"fake-png"
+    assert content_type == ""
+
+
 def test_localize_ingest_link_images_skips_data_uris_without_creating_assets(tmp_path: Path) -> None:
     from scholaraio.services.ingest.link_images import localize_ingest_link_images
 

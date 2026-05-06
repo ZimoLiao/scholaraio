@@ -196,7 +196,7 @@ def _read_url_bytes(url: str, *, timeout: float = 30.0) -> tuple[bytes, str]:
     }
     request = urllib.request.Request(url, headers=headers, method="GET")
     with urllib.request.urlopen(request, timeout=timeout) as response:
-        content_type = response.headers.get_content_type() if response.headers else ""
+        content_type = response.headers.get("Content-Type", "") if response.headers else ""
         payload = response.read(MAX_IMAGE_BYTES + 1)
     if len(payload) > MAX_IMAGE_BYTES:
         raise ValueError(f"image exceeds {MAX_IMAGE_BYTES} bytes")
