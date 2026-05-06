@@ -52,6 +52,28 @@ def test_localize_ingest_link_images_preserves_external_url_when_download_fails(
     assert "403 forbidden" in (result.images[0].error or "")
 
 
+def test_localize_ingest_link_images_rejects_non_image_responses(tmp_path: Path) -> None:
+    from scholaraio.services.ingest.link_images import localize_ingest_link_images
+
+    images_dir = tmp_path / "01-example_images"
+
+    def fetch_bytes(url: str, *, timeout: float = 30.0) -> tuple[bytes, str]:
+        return b"<html>not an image</html>", "text/html"
+
+    result = localize_ingest_link_images(
+        markdown="# Example\n\n![Not Image](https://example.com/web_sample1.html)\n",
+        html="",
+        base_url="https://example.com/",
+        images_dir=images_dir,
+        fetch_bytes=fetch_bytes,
+    )
+
+    assert "![Not Image](https://example.com/web_sample1.html)" in result.markdown
+    assert not images_dir.exists()
+    assert result.images[0].status == "failed"
+    assert "unsupported image content type" in (result.images[0].error or "")
+
+
 def test_localize_ingest_link_images_skips_data_uris_without_creating_assets(tmp_path: Path) -> None:
     from scholaraio.services.ingest.link_images import localize_ingest_link_images
 

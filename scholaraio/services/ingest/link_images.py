@@ -22,6 +22,7 @@ _SAFE_EXTENSIONS = {
     ".svg",
     ".webp",
 }
+_AMBIGUOUS_CONTENT_TYPES = {"", "application/octet-stream", "binary/octet-stream"}
 
 
 @dataclass(frozen=True)
@@ -99,6 +100,7 @@ def localize_ingest_link_images(
 
         try:
             payload, content_type = fetch(resolved_url, timeout=timeout)
+            _validate_image_content_type(resolved_url, content_type)
             filename = _unique_filename(images_dir, resolved_url, content_type)
             images_dir.mkdir(parents=True, exist_ok=True)
             (images_dir / filename).write_bytes(payload)
@@ -199,6 +201,16 @@ def _read_url_bytes(url: str, *, timeout: float = 30.0) -> tuple[bytes, str]:
     if len(payload) > MAX_IMAGE_BYTES:
         raise ValueError(f"image exceeds {MAX_IMAGE_BYTES} bytes")
     return payload, content_type
+
+
+def _validate_image_content_type(url: str, content_type: str) -> None:
+    normalized = (content_type or "").split(";", 1)[0].strip().lower()
+    if normalized.startswith("image/"):
+        return
+    if normalized in _AMBIGUOUS_CONTENT_TYPES and Path(_filename_from_url(url)).suffix.lower() in _SAFE_EXTENSIONS:
+        return
+    display_type = normalized or "missing"
+    raise ValueError(f"unsupported image content type: {display_type}")
 
 
 def _unique_filename(images_dir: Path, url: str, content_type: str) -> str:
