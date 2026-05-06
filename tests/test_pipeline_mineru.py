@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 
 from scholaraio.core.config import Config
 from scholaraio.providers.mineru import ConvertResult, PDFValidationResult
 from scholaraio.services.ingest.pipeline import InboxCtx, StepResult, _process_inbox, batch_convert_pdfs, step_mineru
+from scholaraio.services.ingest_metadata._models import PaperMetadata
 
 
 def _allow_pdf_validation(monkeypatch):
@@ -109,6 +111,70 @@ def test_move_assets_moves_generic_image_dir_and_rewrites_markdown_refs(tmp_path
 
     assert (dest / "images" / "fig.png").read_bytes() == b"png"
     assert paper_md.read_text(encoding="utf-8") == "![fig](images/fig.png)\n"
+
+
+def test_process_inbox_local_mineru_images_reach_paper_directory(tmp_path, monkeypatch):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    papers = tmp_path / "papers"
+    pending = tmp_path / "pending"
+    pdf = inbox / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+    image_bytes = b"fake-png"
+
+    cfg = Config()
+    cfg._root = tmp_path
+
+    import scholaraio.providers.mineru as mineru
+    import scholaraio.services.ingest.pipeline as pipeline
+
+    _allow_pdf_validation(monkeypatch)
+    monkeypatch.setattr(mineru, "check_server", lambda *_args, **_kwargs: True)
+
+    class FakeResponse:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {
+                "results": {
+                    pdf.stem: {
+                        "md_content": "![fig](images/fig.png)\n",
+                        "images": {"fig.png": "data:image/png;base64," + base64.b64encode(image_bytes).decode("ascii")},
+                    }
+                }
+            }
+
+    monkeypatch.setattr(mineru.requests, "post", lambda *_args, **_kwargs: FakeResponse())
+
+    def fake_extract(ctx):
+        ctx.meta = PaperMetadata(
+            title="Local MinerU Images",
+            first_author_lastname="Zhang",
+            year=2026,
+            doi="10.1000/local-images",
+        )
+        return StepResult.OK
+
+    monkeypatch.setattr(pipeline.STEPS["extract"], "fn", fake_extract)
+
+    _process_inbox(
+        inbox,
+        papers,
+        pending,
+        {},
+        ["mineru", "extract", "ingest"],
+        cfg,
+        {"no_api": True},
+        False,
+        [],
+    )
+
+    paper_dirs = list(papers.iterdir())
+    assert len(paper_dirs) == 1
+    paper_dir = paper_dirs[0]
+    assert (paper_dir / "paper.md").read_text(encoding="utf-8") == "![fig](images/fig.png)\n"
+    assert (paper_dir / "images" / "fig.png").read_bytes() == image_bytes
 
 
 def test_step_mineru_falls_back_without_cloud_key(tmp_path, monkeypatch):

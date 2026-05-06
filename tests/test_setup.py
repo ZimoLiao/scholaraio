@@ -359,6 +359,7 @@ def test_wizard_parser_auto_choice_shows_advisory_not_override(monkeypatch, caps
         lambda name: "/usr/bin/mineru-open-api" if name == "mineru-open-api" else None,
     )
     monkeypatch.setattr(cfg, "resolved_mineru_api_key", lambda: "")
+    monkeypatch.setattr("requests.get", lambda *_args, **_kwargs: (_ for _ in ()).throw(ConnectionError("offline")))
     monkeypatch.setattr("scholaraio.services.setup._probe_url", lambda url, timeout=2: "mineru.net" in url)
 
     choice = _wizard_parser(cfg, "zh")
@@ -484,6 +485,7 @@ def test_wizard_parser_auto_prefers_mineru_when_cli_exists_even_without_token_pr
         lambda name: "/usr/bin/mineru-open-api" if name == "mineru-open-api" else None,
     )
     monkeypatch.setattr(cfg, "resolved_mineru_api_key", lambda: "")
+    monkeypatch.setattr("requests.get", lambda *_args, **_kwargs: (_ for _ in ()).throw(ConnectionError("offline")))
     monkeypatch.setattr("scholaraio.services.setup._probe_url", lambda *_args, **_kwargs: False)
 
     choice = _wizard_parser(cfg, "zh")

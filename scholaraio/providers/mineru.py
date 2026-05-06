@@ -80,6 +80,8 @@ MinerU 后端选项 (--backend)
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import concurrent.futures
 import hashlib
 import json
@@ -424,7 +426,7 @@ def convert_pdf(pdf_path: Path, opts: ConvertOptions) -> ConvertResult:
         "return_middle_json": (None, "false"),
         "return_content_list": (None, str(opts.save_content_list).lower()),
         "return_model_output": (None, "false"),
-        "return_images": (None, "false"),
+        "return_images": (None, "true"),
         "start_page_id": (None, str(opts.start_page)),
         "end_page_id": (None, str(opts.end_page)),
     }
@@ -474,6 +476,7 @@ def convert_pdf(pdf_path: Path, opts: ConvertOptions) -> ConvertResult:
     md_path.write_text(md_content, encoding="utf-8")
     result.success = True
     result.md_size = len(md_content.encode("utf-8"))
+    _save_extracted_images(data, out_dir)
 
     # Optionally save content_list JSON
     if opts.save_content_list:
@@ -533,6 +536,53 @@ def _extract_field(data, field_name):
             if isinstance(entry, dict) and field_name in entry:
                 return entry[field_name]
     return data.get(field_name)
+
+
+def _save_extracted_images(data, out_dir: Path) -> None:
+    images = _extract_field(data, "images")
+    if not isinstance(images, dict):
+        return
+
+    images_dir = out_dir / "images"
+    saved = 0
+    for raw_name, payload in images.items():
+        filename = _safe_image_filename(raw_name)
+        if not filename:
+            continue
+        image_bytes = _decode_image_payload(payload)
+        if image_bytes is None:
+            _log.warning("skipping undecodable MinerU image: %s", raw_name)
+            continue
+        images_dir.mkdir(parents=True, exist_ok=True)
+        (images_dir / filename).write_bytes(image_bytes)
+        saved += 1
+    if saved:
+        _log.debug("saved %d MinerU images to %s", saved, images_dir)
+
+
+def _safe_image_filename(raw_name: object) -> str:
+    name = str(raw_name).replace("\\", "/").strip()
+    if not name:
+        return ""
+    return Path(name).name
+
+
+def _decode_image_payload(payload: object) -> bytes | None:
+    if isinstance(payload, bytes):
+        return payload
+    if not isinstance(payload, str):
+        return None
+    text = payload.strip()
+    if not text:
+        return None
+    if text.startswith("data:"):
+        _header, sep, text = text.partition(",")
+        if not sep:
+            return None
+    try:
+        return base64.b64decode(text, validate=True)
+    except (binascii.Error, ValueError):
+        return None
 
 
 # ============================================================================
