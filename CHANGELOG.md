@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **English CLI and service messages**: Migrated user-facing CLI help, status output, warnings, and service error messages from Chinese to English, and updated the corresponding regression tests so ScholarAIO no longer preserves Chinese compatibility for these message strings.
 
+### Fixed
+
+- **Local MinerU batch image assets**: Saved images returned by the local MinerU API into per-PDF `<pdf_stem>_images/` directories and rewrote Markdown references accordingly, preventing `cmd_batch` runs that share one output directory from overwriting generic image names such as `image_1.png`.
+
 ## [1.4.0] — 2026-04-25
 
 ### Added
