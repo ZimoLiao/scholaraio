@@ -24,7 +24,7 @@ When `root` is omitted, ScholarAIO uses:
 data/runtime/extensions/paper2any/Paper2Any
 ```
 
-Keep real tokens in `config.local.yaml` or environment variables:
+Keep real tokens in `config.local.yaml` or environment variables. `backend_api_key` is required for Paper2Any `/api/v1/...` routes because the upstream backend checks it as `BACKEND_API_KEY` / `X-API-Key`.
 
 ```yaml
 paper2any:
@@ -65,6 +65,7 @@ scholaraio paper2any mcp-serve
 Start the real upstream Paper2Any FastAPI backend when an API workflow is needed:
 
 ```bash
+export PAPER2ANY_BACKEND_API_KEY="..."
 scholaraio paper2any backend-serve
 ```
 
@@ -89,7 +90,7 @@ scholaraio paper2any call paper2any_run_cli --arguments-json '{
 
 If upstream Paper2Any requires outputs to stay under its own `Paper2Any/outputs` tree, the sidecar stages the real run there and then copies the generated artifacts back to the requested ScholarAIO workspace path. The MCP result reports both `paper2any_output_dir` and `requested_output_dir`.
 
-Proxy a real Paper2Any FastAPI JSON route:
+Proxy a real Paper2Any FastAPI JSON route. This requires `paper2any.backend_api_key` in `config.local.yaml` or `PAPER2ANY_BACKEND_API_KEY` in the environment:
 
 ```bash
 scholaraio paper2any call paper2any_call_api --arguments-json '{
@@ -126,8 +127,8 @@ Standalone CLI workflows:
 Backend workflow families:
 
 - `paper2figure`, `paper2ppt`, `paper2citation`, `paper2video`, `paper2poster`
-- `pdf2ppt`, `image2ppt`, `image2drawio`, `image_playground`
-- `mindmap`, `kb`, `kb_workflows`, `kb_embedding`, `files`
+- `pdf2ppt`, `image2ppt`, `image2drawio`, `image_playground` (`/api/v1/image-playground/...`)
+- `mindmap`, `kb`, `kb_workflows`, `kb_embedding`, `files` (`kb_workflows` and `kb_embedding` are under `/api/v1/kb/...`)
 - `paper2drawio`, `paper2rebuttal`
 
 ## Agent MCP Registration

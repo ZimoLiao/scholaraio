@@ -43,9 +43,10 @@ data/runtime/extensions/paper2any/Paper2Any
 
    这只启动 ScholarAIO 的 MCP 代理，不会伪造 Paper2Any 结果。真实产物仍由外部 Paper2Any CLI 或 Paper2Any FastAPI 生成。
 
-4. 如果需要 Paper2Any FastAPI 工作流，启动真实上游 backend：
+4. 如果需要 Paper2Any FastAPI 工作流，启动真实上游 backend。上游 `/api/v1/...` 路由要求 `BACKEND_API_KEY` / `X-API-Key`，因此先在 `config.local.yaml` 写入 `paper2any.backend_api_key`，或设置环境变量：
 
    ```bash
+   export PAPER2ANY_BACKEND_API_KEY="..."
    scholaraio paper2any backend-serve
    ```
 
@@ -71,7 +72,7 @@ data/runtime/extensions/paper2any/Paper2Any
 
    如果 upstream Paper2Any 只允许写入自己的 `Paper2Any/outputs` 目录，sidecar 会先在那里真实运行，再把真实产物复制回请求中的 workspace 输出目录。结果里会同时给出 `paper2any_output_dir` 和 `requested_output_dir`。
 
-7. 调用真实 Paper2Any FastAPI 后端 JSON 路径：
+7. 调用真实 Paper2Any FastAPI 后端 JSON 路径；这同样要求 `paper2any.backend_api_key` 或 `PAPER2ANY_BACKEND_API_KEY`：
 
    ```bash
    scholaraio paper2any call paper2any_call_api --arguments-json '{
@@ -104,8 +105,8 @@ data/runtime/extensions/paper2any/Paper2Any
 真实 FastAPI 工作流族：
 
 - `paper2figure`, `paper2ppt`, `paper2citation`, `paper2video`, `paper2poster`
-- `pdf2ppt`, `image2ppt`, `image2drawio`, `image_playground`
-- `mindmap`, `kb`, `kb_workflows`, `kb_embedding`, `files`
+- `pdf2ppt`, `image2ppt`, `image2drawio`, `image_playground`（实际路径为 `/api/v1/image-playground/...`）
+- `mindmap`, `kb`, `kb_workflows`, `kb_embedding`, `files`（`kb_workflows` 与 `kb_embedding` 实际挂在 `/api/v1/kb/...` 下）
 - `paper2drawio`, `paper2rebuttal`
 
 ## 配置
@@ -119,7 +120,7 @@ paper2any:
   root: null
   base_url: http://127.0.0.1:8000
   api_key: null
-  backend_api_key: null
+  backend_api_key: null  # required for upstream /api/v1/... routes
 ```
 
 `config.local.yaml` 只放本机密钥：
@@ -136,7 +137,7 @@ paper2any:
 - `PAPER2ANY_MCP_URL`
 - `PAPER2ANY_MCP_API_KEY`
 - `PAPER2ANY_BACKEND_URL`
-- `PAPER2ANY_BACKEND_API_KEY`
+- `PAPER2ANY_BACKEND_API_KEY`（上游 `/api/v1/...` 路由必需）
 
 ## Agent 规则
 

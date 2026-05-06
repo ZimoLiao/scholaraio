@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from typing import Any
 
@@ -114,9 +115,17 @@ def _cmd_backend_serve(args: argparse.Namespace, cfg: object) -> None:
 
     host = str(getattr(args, "host", "127.0.0.1") or "127.0.0.1")
     port = int(getattr(args, "port", 8000) or 8000)
-    backend_api_key = getattr(args, "backend_api_key", "") or getattr(paper2any_cfg, "backend_api_key", "")
+    backend_api_key = (
+        getattr(args, "backend_api_key", "")
+        or getattr(paper2any_cfg, "backend_api_key", "")
+        or os.environ.get("PAPER2ANY_BACKEND_API_KEY", "")
+    )
     _ui(f"Starting Paper2Any backend at http://{host}:{port}")
     _ui(f"Paper2Any root: {root or '(not configured)'}")
+    if not backend_api_key:
+        _ui(
+            "Warning: Paper2Any /api routes require BACKEND_API_KEY; set paper2any.backend_api_key or PAPER2ANY_BACKEND_API_KEY."
+        )
     try:
         serve_paper2any_backend(
             root,

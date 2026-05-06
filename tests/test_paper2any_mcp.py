@@ -227,6 +227,64 @@ print("API Key: sk-test-secret")
     assert (output_dir / "figure.svg").read_text(encoding="utf-8") == "<svg>ok</svg>"
 
 
+def test_paper2any_mcp_sidecar_resolves_relative_cli_input_before_changing_cwd(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from scholaraio.providers.paper2any_mcp_server import Paper2AnySidecarConfig, handle_mcp_jsonrpc_request
+
+    root = tmp_path / "Paper2Any"
+    script_dir = root / "script"
+    script_dir.mkdir(parents=True)
+    (script_dir / "run_paper2figure_cli.py").write_text(
+        """
+import argparse
+from pathlib import Path
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--input", required=True)
+parser.add_argument("--output-dir", required=True)
+args = parser.parse_args()
+input_path = Path(args.input)
+if not input_path.is_file():
+    raise SystemExit(f"missing input: {input_path}")
+out = Path(args.output_dir)
+out.mkdir(parents=True, exist_ok=True)
+(out / "seen.txt").write_text(str(input_path), encoding="utf-8")
+""".lstrip(),
+        encoding="utf-8",
+    )
+    workspace_pdf = tmp_path / "workspace" / "example" / "paper.pdf"
+    workspace_pdf.parent.mkdir(parents=True)
+    workspace_pdf.write_bytes(b"%PDF")
+    monkeypatch.chdir(tmp_path)
+
+    status, body, _ = handle_mcp_jsonrpc_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 33,
+            "method": "tools/call",
+            "params": {
+                "name": "paper2any_run_cli",
+                "arguments": {
+                    "workflow": "paper2figure",
+                    "input": "workspace/example/paper.pdf",
+                    "output_dir": "workspace/_system/paper2any/example-figure",
+                    "python": sys.executable,
+                    "timeout": 20,
+                },
+            },
+        },
+        Paper2AnySidecarConfig(root=root),
+    )
+
+    structured = body["result"]["structuredContent"]
+    assert status == 200
+    assert body["result"]["isError"] is False
+    assert structured["returncode"] == 0
+    assert structured["artifacts"][0]["path"].endswith("seen.txt")
+
+
 def test_paper2any_mcp_sidecar_rejects_empty_cli_output_dir(tmp_path: Path) -> None:
     from scholaraio.providers.paper2any_mcp_server import Paper2AnySidecarConfig, handle_mcp_jsonrpc_request
 
@@ -394,6 +452,40 @@ def test_paper2any_mcp_sidecar_proxies_allowed_api_with_backend_key(monkeypatch)
         "body": {"model": "gpt-4o"},
     }
     assert body["result"]["structuredContent"]["response"] == {"ok": True}
+
+
+def test_paper2any_mcp_sidecar_requires_backend_key_for_api_routes(monkeypatch) -> None:
+    def fake_urlopen(req, timeout=0):
+        raise AssertionError("backend should not be called without a key")
+
+    monkeypatch.setattr("scholaraio.providers.paper2any_mcp_server.urlopen", fake_urlopen)
+
+    from scholaraio.providers.paper2any_mcp_server import Paper2AnySidecarConfig, handle_mcp_jsonrpc_request
+
+    status, body, _ = handle_mcp_jsonrpc_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 34,
+            "method": "tools/call",
+            "params": {
+                "name": "paper2any_call_api",
+                "arguments": {"path": "/api/v1/system/verify-llm", "json": {"model": "gpt-4o"}},
+            },
+        },
+        Paper2AnySidecarConfig(backend_url="http://127.0.0.1:8000"),
+    )
+
+    assert status == 200
+    assert body["result"]["isError"] is True
+    assert "backend API key is required" in body["result"]["content"][0]["text"]
+
+
+def test_paper2any_mcp_capabilities_use_real_upstream_api_prefixes() -> None:
+    from scholaraio.providers.paper2any_mcp_server import API_CAPABILITIES
+
+    assert API_CAPABILITIES["image_playground"] == "/api/v1/image-playground/*"
+    assert API_CAPABILITIES["kb_workflows"].startswith("/api/v1/kb/")
+    assert API_CAPABILITIES["kb_embedding"].startswith("/api/v1/kb/")
 
 
 def test_paper2any_mcp_sidecar_rejects_api_paths_outside_paper2any_backend() -> None:

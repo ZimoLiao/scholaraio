@@ -86,9 +86,10 @@ def serve_paper2any_backend(
     if not (root_path / "fastapi_app" / "main.py").is_file():
         raise Paper2AnySetupError(f"Paper2Any FastAPI app not found under: {root_path}")
 
+    resolved_backend_api_key = (backend_api_key or os.environ.get("PAPER2ANY_BACKEND_API_KEY", "")).strip()
     env = os.environ.copy()
-    if backend_api_key:
-        env["BACKEND_API_KEY"] = backend_api_key
+    if resolved_backend_api_key:
+        env["BACKEND_API_KEY"] = resolved_backend_api_key
 
     _run(
         [
@@ -125,12 +126,14 @@ def _resolve_runtime_python(root: Path, requested_python: str = "") -> str:
 
 def _run(cmd: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None) -> None:
     try:
-        kwargs: dict[str, object] = {"check": True}
-        if cwd is not None:
-            kwargs["cwd"] = str(cwd)
-        if env is not None:
-            kwargs["env"] = env
-        subprocess.run(cmd, **kwargs)
+        if cwd is None and env is None:
+            subprocess.run(cmd, check=True)
+        elif cwd is None:
+            subprocess.run(cmd, check=True, env=env)
+        elif env is None:
+            subprocess.run(cmd, check=True, cwd=str(cwd))
+        else:
+            subprocess.run(cmd, check=True, cwd=str(cwd), env=env)
     except FileNotFoundError as exc:
         raise Paper2AnySetupError(f"Missing executable: {cmd[0]}") from exc
     except subprocess.CalledProcessError as exc:

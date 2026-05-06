@@ -80,7 +80,7 @@ paper2any:
   root: null # default: data/runtime/extensions/paper2any/Paper2Any
   base_url: http://127.0.0.1:8000 # optional upstream Paper2Any FastAPI backend
   api_key: null # optional MCP bearer token -> config.local.yaml
-  backend_api_key: null # optional upstream BACKEND_API_KEY -> config.local.yaml
+  backend_api_key: null # required for upstream /api routes -> config.local.yaml
 
 # Semantic embeddings 语义向量
 embed:

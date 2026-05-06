@@ -12,7 +12,7 @@ import uuid
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
@@ -44,11 +44,11 @@ API_CAPABILITIES = {
     "pdf2ppt": "/api/v1/pdf2ppt/*",
     "image2ppt": "/api/v1/image2ppt/*",
     "image2drawio": "/api/v1/image2drawio/*",
-    "image_playground": "/api/v1/image_playground/*",
+    "image_playground": "/api/v1/image-playground/*",
     "mindmap": "/api/v1/mindmap/*",
     "kb": "/api/v1/kb/*",
-    "kb_workflows": "/api/v1/kb_workflows/*",
-    "kb_embedding": "/api/v1/kb_embedding/*",
+    "kb_workflows": "/api/v1/kb/generate-* | /api/v1/kb/deep-research",
+    "kb_embedding": "/api/v1/kb/embedding | /api/v1/kb/list | /api/v1/kb/search",
     "files": "/api/v1/files/*",
     "paper2drawio": "/api/v1/paper2drawio/*",
     "paper2rebuttal": "/api/v1/paper2rebuttal/*",
@@ -156,7 +156,8 @@ def handle_mcp_jsonrpc_request(
     """Handle one MCP Streamable HTTP JSON-RPC request."""
     request_id = payload.get("id")
     method = str(payload.get("method") or "")
-    params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
+    raw_params = payload.get("params")
+    params: dict[str, Any] = cast(dict[str, Any], raw_params) if isinstance(raw_params, dict) else {}
 
     if method == "initialize":
         result = {
@@ -174,7 +175,8 @@ def handle_mcp_jsonrpc_request(
 
     if method == "tools/call":
         name = str(params.get("name") or "")
-        arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
+        raw_arguments = params.get("arguments")
+        arguments: dict[str, Any] = cast(dict[str, Any], raw_arguments) if isinstance(raw_arguments, dict) else {}
         return 200, _jsonrpc_result(request_id, _dispatch_tool(name, arguments, config)), {}
 
     return 200, _jsonrpc_error(request_id, -32601, f"Unsupported MCP method: {method}"), {}
@@ -353,13 +355,14 @@ def _run_cli(arguments: dict[str, Any], config: Paper2AnySidecarConfig) -> dict[
     output_dir = str(arguments.get("output_dir") or "").strip()
     if not input_path or not output_dir:
         return _tool_result("paper2any_run_cli requires input and output_dir", arguments, is_error=True)
+    normalized_input = _normalize_cli_input(input_path)
     requested_output_dir = Path(output_dir).expanduser().resolve()
     requested_output_dir.mkdir(parents=True, exist_ok=True)
     run_output_dir = _run_output_dir(root, requested_output_dir)
     run_output_dir.mkdir(parents=True, exist_ok=True)
 
     python_bin = _resolve_python_bin(root, str(arguments.get("python") or ""))
-    cmd = [python_bin, str(script_path), "--input", input_path, "--output-dir", str(run_output_dir)]
+    cmd = [python_bin, str(script_path), "--input", normalized_input, "--output-dir", str(run_output_dir)]
     api_url = str(arguments.get("api_url") or "").strip()
     api_key = str(arguments.get("api_key") or "").strip()
     if api_url:
@@ -394,8 +397,8 @@ def _run_cli(arguments: dict[str, Any], config: Paper2AnySidecarConfig) -> dict[
             {
                 "workflow": workflow,
                 "command": _redact_text(" ".join(cmd)),
-                "stdout": _redact_text(exc.stdout or ""),
-                "stderr": _redact_text(exc.stderr or ""),
+                "stdout": _redact_process_output(exc.stdout),
+                "stderr": _redact_process_output(exc.stderr),
                 "requested_output_dir": str(requested_output_dir),
                 "paper2any_output_dir": str(run_output_dir),
                 "timeout": timeout,
@@ -437,6 +440,12 @@ def _call_api(arguments: dict[str, Any], config: Paper2AnySidecarConfig) -> dict
     if data is not None:
         headers["Content-Type"] = "application/json"
     api_key = str(arguments.get("api_key") or config.paper2any_backend_api_key).strip()
+    if path != "/health" and not api_key:
+        return _tool_result(
+            "Paper2Any backend API key is required for /api/v1/ routes",
+            {"path": path, "backend_url": config.paper2any_backend_url},
+            is_error=True,
+        )
     if api_key:
         headers["X-API-Key"] = api_key
 
@@ -484,6 +493,18 @@ def _collect_artifacts(output_dir: Path) -> list[dict[str, Any]]:
             }
         )
     return artifacts
+
+
+def _normalize_cli_input(input_value: str) -> str:
+    parsed = urlsplit(input_value)
+    if parsed.scheme and parsed.netloc:
+        return input_value
+    input_path = Path(input_value).expanduser()
+    if input_path.is_absolute():
+        return str(input_path)
+    if input_path.exists() or input_path.suffix:
+        return str(input_path.resolve())
+    return input_value
 
 
 def _run_output_dir(root: Path, requested_output_dir: Path) -> Path:
@@ -548,6 +569,14 @@ def _redact_text(text: str) -> str:
         else:
             redacted = pattern.sub("[REDACTED]", redacted)
     return redacted
+
+
+def _redact_process_output(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return _redact_text(value.decode("utf-8", errors="replace"))
+    return _redact_text(value)
 
 
 def _decode_json_or_text(raw: str) -> Any:
