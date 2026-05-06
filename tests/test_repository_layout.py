@@ -1383,6 +1383,7 @@ def test_internal_cli_wiring_commands_live_in_interface_namespace() -> None:
         ("cmd_arxiv_fetch", "scholaraio.interfaces.cli.arxiv"),
         ("cmd_websearch", "scholaraio.interfaces.cli.web"),
         ("cmd_webextract", "scholaraio.interfaces.cli.web"),
+        ("cmd_paper2any", "scholaraio.interfaces.cli.paper2any"),
         ("cmd_explore", "scholaraio.interfaces.cli.explore"),
         ("cmd_ingest_link", "scholaraio.interfaces.cli.ingest_link"),
         ("cmd_publish_site", "scholaraio.interfaces.cli.publish"),

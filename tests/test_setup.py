@@ -183,10 +183,13 @@ def test_run_check_includes_optional_api_configuration_statuses(monkeypatch):
     result_map = {item.label: item for item in results}
     assert "Semantic Scholar API key" in result_map
     assert "Zotero API key" in result_map
+    assert "Paper2Any" in result_map
     assert result_map["Semantic Scholar API key"].ok is True
     assert result_map["Zotero API key"].ok is True
+    assert result_map["Paper2Any"].ok is True
     assert "可选" in result_map["Semantic Scholar API key"].detail
     assert "可选" in result_map["Zotero API key"].detail
+    assert "OpenDCAI/Paper2Any" in result_map["Paper2Any"].detail
 
 
 def test_run_check_prefers_mineru_recommendation_when_cli_exists_without_token(monkeypatch):

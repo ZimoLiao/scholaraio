@@ -48,6 +48,7 @@ _S: dict[str, dict[Lang, str]] = {
     "contact_email": {"en": "Contact email", "zh": "联系邮箱"},
     "s2_key": {"en": "Semantic Scholar API key", "zh": "Semantic Scholar API key"},
     "zotero_key": {"en": "Zotero API key", "zh": "Zotero API key"},
+    "paper2any": {"en": "Paper2Any", "zh": "Paper2Any"},
     "directories": {"en": "Directories", "zh": "目录结构"},
     "papers_count": {"en": "Papers", "zh": "论文数量"},
     "optional_s2_set": {
@@ -531,6 +532,17 @@ def run_check(cfg: Config | None = None, lang: Lang = "zh") -> list[CheckResult]
                 t("optional_zotero_unset", lang),
             )
         )
+
+    paper2any_root = cfg.paper2any_root
+    paper2any_mcp_url = cfg.paper2any.mcp_url or "http://127.0.0.1:8770/mcp"
+    if paper2any_root.exists():
+        paper2any_detail = f"optional: OpenDCAI/Paper2Any checkout found at {paper2any_root}; MCP {paper2any_mcp_url}"
+    else:
+        paper2any_detail = (
+            f"optional: checkout not found at {paper2any_root}; "
+            f"agent can place OpenDCAI/Paper2Any there and start `scholaraio paper2any mcp-serve`"
+        )
+    results.append(CheckResult(t("paper2any", lang), True, paper2any_detail))
 
     # Directories
     dirs_to_check = [

@@ -292,6 +292,30 @@ class TestCliHelpLocalization:
         assert "workspace/_system/translation-bundles/" in translate_help
         assert "workspace/translation-ws/" not in translate_help
 
+    def test_paper2any_help_exposes_lightweight_mcp_sidecar(self):
+        parser = cli._build_parser()
+        paper2any_parser = parser._subparsers._group_actions[0].choices["paper2any"]
+        actions = paper2any_parser._subparsers._group_actions[0].choices
+
+        serve_help = actions["mcp-serve"].format_help()
+        backend_help = actions["backend-serve"].format_help()
+        setup_help = actions["setup"].format_help()
+        call_help = actions["call"].format_help()
+
+        assert "Prepare the external Paper2Any runtime extension" in setup_help
+        assert "--install-runtime" in setup_help
+        assert "Start the lightweight Paper2Any MCP sidecar" in serve_help
+        assert "--paper2any-root" in serve_help
+        assert "--backend-url" in serve_help
+        assert "Start the real upstream Paper2Any FastAPI backend" in backend_help
+        assert "--backend-api-key" in backend_help
+        assert "Call a Paper2Any MCP tool" in call_help
+        assert "setup" in actions
+        assert "mcp-serve" in actions
+        assert "backend-serve" in actions
+        assert "status" in actions
+        assert "tools" in actions
+
 
 class TestWebsearchCli:
     def test_cmd_websearch_exits_on_service_unavailable(self, monkeypatch):

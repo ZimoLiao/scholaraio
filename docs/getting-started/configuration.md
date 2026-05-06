@@ -162,6 +162,31 @@ webextract:
   api_key: "optional-token"
 ```
 
+### Paper2Any MCP Sidecar
+
+Paper2Any is an optional external extension. ScholarAIO keeps the OpenDCAI/Paper2Any checkout outside tracked source, normally under `data/runtime/extensions/paper2any/Paper2Any`, and talks to it through a lightweight MCP sidecar:
+
+```yaml
+paper2any:
+  transport: mcp
+  mcp_url: http://127.0.0.1:8770/mcp
+  root: null
+  base_url: http://127.0.0.1:8000
+  api_key: "optional-sidecar-token"
+  backend_api_key: "optional-upstream-backend-token"
+```
+
+Agent workflows should start the sidecar with:
+
+```bash
+scholaraio paper2any setup
+scholaraio paper2any mcp-serve
+scholaraio paper2any backend-serve # optional, only when a FastAPI workflow is needed
+scholaraio paper2any status
+```
+
+If the user wants the agent to prepare Paper2Any's isolated upstream Python runtime as well, the agent can run `scholaraio paper2any setup --install-runtime`.
+
 ### Publish Site
 
 `published/` is a local, git-ignored archive for final audited deliverables. The `publish-site` command can generate a separate static site from `published/*/metadata.json`.

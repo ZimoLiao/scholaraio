@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Paper2Any MCP sidecar integration**: Added `scholaraio paper2any` setup, serve, status, and smoke commands, a lightweight MCP sidecar for Paper2Any conversion workflows, configuration and setup diagnostics for the extension checkout and backend API key, and user/agent documentation for running the sidecar from ScholarAIO.
+
 ### Changed
 
 - **English CLI and service messages**: Migrated user-facing CLI help, status output, warnings, and service error messages from Chinese to English, and updated the corresponding regression tests so ScholarAIO no longer preserves Chinese compatibility for these message strings.

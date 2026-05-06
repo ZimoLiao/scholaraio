@@ -71,6 +71,17 @@ ingest:
   pdf_fallback_order: [auto] # 完全自定义降级链；可写 [pymupdf] 或 [docling,pymupdf]，auto=自动检测本机可用解析器
   pdf_fallback_auto_detect: true # 是否启用自动检测（建议开启）
 
+# Paper2Any external extension Paper2Any 外部增强组件
+# ScholarAIO talks to a lightweight MCP sidecar. The upstream OpenDCAI/Paper2Any
+# checkout stays outside tracked source, by default under data/runtime/extensions/paper2any/Paper2Any.
+paper2any:
+  transport: mcp
+  mcp_url: http://127.0.0.1:8770/mcp
+  root: null # default: data/runtime/extensions/paper2any/Paper2Any
+  base_url: http://127.0.0.1:8000 # optional upstream Paper2Any FastAPI backend
+  api_key: null # optional MCP bearer token -> config.local.yaml
+  backend_api_key: null # required for upstream /api routes -> config.local.yaml
+
 # Semantic embeddings 语义向量
 embed:
   provider: local # local | openai-compat | none

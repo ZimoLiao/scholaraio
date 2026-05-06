@@ -20,6 +20,12 @@ ingest:
                # Apply at: https://www.semanticscholar.org/product/api#api-key
                # 申请地址：https://www.semanticscholar.org/product/api#api-key
 
+# Paper2Any sidecar/backend tokens (optional)
+# Paper2Any sidecar / 后端令牌（可选）
+paper2any:
+  api_key: "" # Optional Bearer token for scholaraio paper2any mcp-serve
+  backend_api_key: "" # Required for upstream Paper2Any /api routes (BACKEND_API_KEY / X-API-Key)
+
 # Embedding backend override (optional) Embedding 后端覆盖（可选）
 # provider: local | openai-compat | none
 # If using cloud embedding API, set api_key/api_base/model here.
