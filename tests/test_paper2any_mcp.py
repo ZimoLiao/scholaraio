@@ -285,6 +285,58 @@ out.mkdir(parents=True, exist_ok=True)
     assert structured["artifacts"][0]["path"].endswith("seen.txt")
 
 
+def test_paper2any_mcp_sidecar_preserves_non_file_text_input_with_periods(
+    tmp_path: Path,
+) -> None:
+    from scholaraio.providers.paper2any_mcp_server import Paper2AnySidecarConfig, handle_mcp_jsonrpc_request
+
+    root = tmp_path / "Paper2Any"
+    script_dir = root / "script"
+    script_dir.mkdir(parents=True)
+    (script_dir / "run_paper2figure_cli.py").write_text(
+        """
+import argparse
+from pathlib import Path
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--input", required=True)
+parser.add_argument("--output-dir", required=True)
+parser.add_argument("--input-type")
+args = parser.parse_args()
+out = Path(args.output_dir)
+out.mkdir(parents=True, exist_ok=True)
+(out / "input.txt").write_text(args.input, encoding="utf-8")
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    status, body, _ = handle_mcp_jsonrpc_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 35,
+            "method": "tools/call",
+            "params": {
+                "name": "paper2any_run_cli",
+                "arguments": {
+                    "workflow": "paper2figure",
+                    "input": "Model v1.0 architecture",
+                    "output_dir": str(tmp_path / "outputs"),
+                    "python": sys.executable,
+                    "extra_args": ["--input-type", "TEXT"],
+                    "timeout": 20,
+                },
+            },
+        },
+        Paper2AnySidecarConfig(root=root),
+    )
+
+    structured = body["result"]["structuredContent"]
+    output_dir = Path(structured["requested_output_dir"])
+    assert status == 200
+    assert body["result"]["isError"] is False
+    assert (output_dir / "input.txt").read_text(encoding="utf-8") == "Model v1.0 architecture"
+
+
 def test_paper2any_mcp_sidecar_rejects_empty_cli_output_dir(tmp_path: Path) -> None:
     from scholaraio.providers.paper2any_mcp_server import Paper2AnySidecarConfig, handle_mcp_jsonrpc_request
 

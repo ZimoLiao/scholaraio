@@ -502,7 +502,7 @@ def _normalize_cli_input(input_value: str) -> str:
     input_path = Path(input_value).expanduser()
     if input_path.is_absolute():
         return str(input_path)
-    if input_path.exists() or input_path.suffix:
+    if input_path.exists():
         return str(input_path.resolve())
     return input_value
 
