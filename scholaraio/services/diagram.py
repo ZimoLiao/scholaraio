@@ -883,7 +883,7 @@ def generate_diagram(
 
     out_path = out_dir / f"{base_name}.{fmt}"
     result = render_ir(ir, fmt, out_path=out_path)
-    _log.info("Generated: %s", result)
+    _log.debug("Diagram render completed: %s", result)
     return result
 
 
@@ -973,5 +973,5 @@ def generate_diagram_from_text(
 
     out_path = out_dir / f"{base_name}.{fmt}"
     result = render_ir(ir, fmt, out_path=out_path)
-    _log.info("Generated: %s", result)
+    _log.debug("Diagram render completed: %s", result)
     return result

@@ -48,6 +48,7 @@ For tactical, format-specific rules and checklists, see the guides in `docs/writ
 
 - [`academic-survey-writing-guide.md`](../writing-guide/academic-survey-writing-guide.md) — LaTeX formal survey writing (20–50 pages), covering literature search strategy, LaTeX template setup, source-paper image insertion, compilation checks, and PDF quality audits.
 - [`academic-beamer-guide.md`](../writing-guide/academic-beamer-guide.md) — Beamer presentation production rules, covering content style, high-density layout, SVG insertion, frame surgery safety, and final checklists.
+- [`graphviz-guide.md`](../writing-guide/graphviz-guide.md) — Graphviz DOT/SVG diagram workflow for `scholaraio diagram`, including IR rendering, DOT sidecars, Beamer insertion, and troubleshooting.
 
 ## Current Writing Skills
 

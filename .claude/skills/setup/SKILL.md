@@ -46,6 +46,8 @@ scholaraio setup check --lang zh
   - `embed`: 语义向量检索（Qwen3 嵌入模型）
   - `topics`: BERTopic 主题建模
   - `import`: Endnote / Zotero 导入
+  - `Graphviz dot`: `diagram --format svg` 的 DOT→SVG 渲染后端；Linux 可用 `sudo apt-get install graphviz`
+  - `Inkscape`: Beamer `\includesvg` 插入 SVG 时需要；Linux 可用 `sudo apt-get install inkscape`
   - `full`: 全部功能
 - 运行 `pip install -e ".[full]"` 或按需安装
 

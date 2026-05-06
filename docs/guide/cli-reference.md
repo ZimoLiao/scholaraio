@@ -122,7 +122,7 @@ scholaraio backup
 - Current `toolref` subcommands are `fetch`, `show`, `search`, `list`, and `use`.
 - `arxiv` supports arXiv search and PDF fetch.
 - `document` provides Office-document utilities such as inspection.
-- `diagram` generates editable scientific diagrams from paper content or structured text.
+- `diagram` generates editable scientific diagrams from paper content or structured text. See the [Graphviz Diagram Guide](../writing-guide/graphviz-guide.md) for DOT/SVG workflows.
 - `style` manages citation styles.
 - `backup` lists configured rsync targets and runs a named backup plan.
 - `backup run` is intentionally non-interactive: SSH is launched with `BatchMode=yes`, so key-based auth and host trust must already be prepared.

@@ -45,6 +45,8 @@ _S: dict[str, dict[Lang, str]] = {
     "docling": {"en": "Docling", "zh": "Docling"},
     "huggingface": {"en": "Hugging Face", "zh": "Hugging Face"},
     "parser_recommendation": {"en": "PDF parser recommendation", "zh": "PDF 解析器推荐"},
+    "graphviz_dot": {"en": "Graphviz dot", "zh": "Graphviz dot"},
+    "inkscape": {"en": "Inkscape", "zh": "Inkscape"},
     "contact_email": {"en": "Contact email", "zh": "联系邮箱"},
     "s2_key": {"en": "Semantic Scholar API key", "zh": "Semantic Scholar API key"},
     "zotero_key": {"en": "Zotero API key", "zh": "Zotero API key"},
@@ -459,6 +461,11 @@ def run_check(cfg: Config | None = None, lang: Lang = "zh") -> list[CheckResult]
                 )
             )
 
+    graphviz_ok, graphviz_detail = _check_graphviz_dot(lang)
+    results.append(CheckResult(t("graphviz_dot", lang), graphviz_ok, graphviz_detail))
+    inkscape_ok, inkscape_detail = _check_inkscape(lang)
+    results.append(CheckResult(t("inkscape", lang), inkscape_ok, inkscape_detail))
+
     # config.yaml
     root = cfg._root
     config_path = root / "config.yaml"
@@ -678,6 +685,42 @@ def _check_docling(lang: Lang) -> tuple[bool, str]:
     if lang == "zh":
         return False, f"未安装 → pip install docling | 安装文档: {DOCLING_INSTALL_URL} | CLI: {DOCLING_CLI_URL}"
     return False, f"not installed → pip install docling | install docs: {DOCLING_INSTALL_URL} | CLI: {DOCLING_CLI_URL}"
+
+
+def _check_graphviz_dot(lang: Lang) -> tuple[bool, str]:
+    """Check whether Graphviz dot is available for diagram SVG rendering."""
+    cmd = shutil.which("dot")
+    if cmd:
+        return True, cmd
+    if lang == "zh":
+        return (
+            False,
+            "未安装 → sudo apt-get install graphviz | macOS: brew install graphviz | "
+            "conda: conda install -c conda-forge graphviz | 验证: dot -V",
+        )
+    return (
+        False,
+        "not installed → sudo apt-get install graphviz | macOS: brew install graphviz | "
+        "conda: conda install -c conda-forge graphviz | verify: dot -V",
+    )
+
+
+def _check_inkscape(lang: Lang) -> tuple[bool, str]:
+    """Check whether Inkscape is available for Beamer SVG inclusion."""
+    cmd = shutil.which("inkscape")
+    if cmd:
+        return True, cmd
+    if lang == "zh":
+        return (
+            False,
+            "未安装 → sudo apt-get install inkscape | macOS: brew install --cask inkscape | "
+            "Beamer \\includesvg 需要 Inkscape 与 -shell-escape",
+        )
+    return (
+        False,
+        "not installed → sudo apt-get install inkscape | macOS: brew install --cask inkscape | "
+        "Beamer \\includesvg requires Inkscape and -shell-escape",
+    )
 
 
 def _probe_url(url: str, timeout: int = 2) -> bool:

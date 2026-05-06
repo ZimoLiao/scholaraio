@@ -93,7 +93,7 @@
   \end{frame}
   ```
 - **编译要求**：必须带 `-shell-escape` 参数调用 `lualatex` 或 `xelatex`，且系统需安装 Inkscape。
-- **推荐工作流**：复杂架构图/数据流图先用 Graphviz 生成 `.dot` 脚本，渲染为 SVG 后插入 Beamer。此流程已在项目内验证可行，能兼顾绘图效率与矢量输出质量。
+- **推荐工作流**：复杂架构图/数据流图先用 Graphviz 生成 `.dot` 脚本，渲染为 SVG 后插入 Beamer。此流程已在项目内验证可行，能兼顾绘图效率与矢量输出质量；具体命令和排错见 [Graphviz Diagram Guide](graphviz-guide.md)。
 
 ---
 

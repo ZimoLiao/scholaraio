@@ -702,6 +702,7 @@ class TestCliDiagram:
             cli.cmd_diagram(args, cfg)
 
     def test_cli_from_text(self, capture_ui, cfg, monkeypatch):
+        info_messages: list[str] = []
         monkeypatch.setattr(
             "scholaraio.services.diagram._call_llm",
             lambda p, c, **kw: json.dumps(
@@ -712,6 +713,10 @@ class TestCliDiagram:
                     "layout_hint": "horizontal",
                 }
             ),
+        )
+        monkeypatch.setattr(
+            "scholaraio.services.diagram._log.info",
+            lambda msg, *args: info_messages.append(msg % args if args else msg),
         )
         args = Namespace(
             paper_id=None,
@@ -725,7 +730,8 @@ class TestCliDiagram:
             critic_rounds=3,
         )
         cli.cmd_diagram(args, cfg)
-        assert any("Generated:" in m for m in capture_ui)
+        assert len([m for m in capture_ui if m.startswith("Generated:")]) == 1
+        assert not any(m.startswith("Generated:") for m in info_messages)
 
     def test_cli_mutually_exclusive_sources_exits(self, monkeypatch):
         monkeypatch.setattr(sys, "exit", MagicMock(side_effect=SystemExit(1)))

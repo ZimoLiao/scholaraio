@@ -45,7 +45,7 @@ Use the source install path when you want to inspect the codebase, edit the pack
 | `pdf` | PyMuPDF-based PDF fallback and long-PDF utilities |
 | `import` | Endnote / Zotero import |
 | `office` | DOCX / PPTX / XLSX ingest and inspection |
-| `draw` | Mermaid and Inkscape-powered diagram generation |
+| `draw` | Python helpers for Mermaid and custom SVG drawing; Graphviz `dot` and Inkscape are system tools checked by `setup check` |
 | `full` | Core research workflow extras: embed + topics + import + pdf + office + draw |
 | `dev` | Development tools (pytest, ruff, mypy) |
 
@@ -65,7 +65,7 @@ scholaraio setup check
 
 `setup check` is the most complete initial diagnostic surface. It covers:
 
-- core setup items: dependency groups, `config.yaml`, LLM key, MinerU / Docling availability, parser recommendation, `contact_email`, and directory state
+- core setup items: dependency groups, `config.yaml`, LLM key, MinerU / Docling availability, parser recommendation, Graphviz `dot`, Inkscape, `contact_email`, and directory state
 - optional advanced items: Semantic Scholar API key and Zotero API key
 
 Current setup guidance prefers **MinerU first** whenever a MinerU path is available (local service or `mineru-open-api` + token). `Docling` and then PyMuPDF remain the fallback chain when MinerU is not usable or when the user explicitly prefers a lighter parser path.

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Graphviz DOT/SVG diagram workflow**: Added the Graphviz diagram guide, linked it from the draw skill and writing/CLI docs, and expanded `setup check` to report `Graphviz dot` and `Inkscape` with actionable install guidance for SVG rendering and Beamer insertion.
 - **Paper2Any MCP sidecar integration**: Added `scholaraio paper2any` setup, serve, status, and smoke commands, a lightweight MCP sidecar for Paper2Any conversion workflows, configuration and setup diagnostics for the extension checkout and backend API key, and user/agent documentation for running the sidecar from ScholarAIO.
 
 ### Changed
@@ -17,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Diagram CLI output noise**: Stopped service-layer diagram generation logs from reusing the user-facing `Generated:` prefix, so `diagram --from-text` reports the generated artifact only once.
 - **Local MinerU batch image assets**: Saved images returned by the local MinerU API into per-PDF `<pdf_stem>_images/` directories and rewrote Markdown references accordingly, preventing `cmd_batch` runs that share one output directory from overwriting generic image names such as `image_1.png`.
 
 ## [1.4.0] — 2026-04-25

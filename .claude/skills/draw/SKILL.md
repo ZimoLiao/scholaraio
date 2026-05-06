@@ -114,14 +114,23 @@ export_mod.export_svg(proj, str(SVG), overwrite=True)
 
 ### Graphviz DOT / SVG
 
-需要系统安装 `dot`：
+需要系统安装 Graphviz 的 `dot`；如要插入 Beamer SVG，也要安装 Inkscape。可先用
+`scholaraio setup check` 查看 `Graphviz dot` 与 `Inkscape` 状态。
 
 ```bash
 # Ubuntu/Debian
-sudo apt-get install graphviz
+sudo apt-get install graphviz inkscape
 
 # macOS
 brew install graphviz
+brew install --cask inkscape
+
+# conda 环境只需要 DOT/SVG 渲染时
+conda install -c conda-forge graphviz
+
+# 验证
+dot -V
+inkscape --version
 ```
 
 生成 SVG（同时保留 `.dot` 源码）：
@@ -129,6 +138,8 @@ brew install graphviz
 ```bash
 scholaraio diagram <paper-id> --format svg -o workspace/_system/figures/
 ```
+
+完整 Graphviz DOT/SVG 工作流见 `docs/writing-guide/graphviz-guide.md`。
 
 LaTeX Beamer 插入代码（需 `-shell-escape` + Inkscape）：
 

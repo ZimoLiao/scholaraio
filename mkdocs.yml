@@ -51,6 +51,7 @@ nav:
       - Paper Reading Framework: writing-guide/paper-reading-framework.md
       - Academic Survey Writing: writing-guide/academic-survey-writing-guide.md
       - Academic Beamer Guide: writing-guide/academic-beamer-guide.md
+      - Graphviz Diagram Guide: writing-guide/graphviz-guide.md
   - API Reference: api/index.md
   - Contributing: contributing.md
   - Changelog: changelog.md

@@ -9,7 +9,9 @@ from scholaraio.core.config import Config
 from scholaraio.services.setup import (
     ParserChoice,
     _check_docling,
+    _check_graphviz_dot,
     _check_huggingface,
+    _check_inkscape,
     _check_mineru,
     _prompt_text,
     _wizard_deps,
@@ -105,6 +107,26 @@ def test_check_docling_reports_actionable_install_guidance(monkeypatch):
     assert "安装文档" in detail
 
 
+def test_check_graphviz_dot_reports_actionable_install_guidance(monkeypatch):
+    monkeypatch.setattr("scholaraio.services.setup.shutil.which", lambda name: None)
+
+    ok, detail = _check_graphviz_dot("zh")
+
+    assert ok is False
+    assert "sudo apt-get install graphviz" in detail
+    assert "dot -V" in detail
+
+
+def test_check_inkscape_reports_beamer_svg_guidance(monkeypatch):
+    monkeypatch.setattr("scholaraio.services.setup.shutil.which", lambda name: None)
+
+    ok, detail = _check_inkscape("zh")
+
+    assert ok is False
+    assert "sudo apt-get install inkscape" in detail
+    assert "Beamer" in detail
+
+
 def test_check_huggingface_uses_reachability_probe(monkeypatch):
     monkeypatch.setattr("scholaraio.services.setup._probe_url", lambda url, timeout=2: url == "https://huggingface.co")
 
@@ -159,6 +181,8 @@ def test_run_check_includes_pdf_office_and_draw_dependency_groups(monkeypatch):
     monkeypatch.setattr("scholaraio.services.setup._check_mineru", lambda *_: (True, "mineru ok"))
     monkeypatch.setattr("scholaraio.services.setup._check_docling", lambda *_: (True, "docling ok"))
     monkeypatch.setattr("scholaraio.services.setup._check_huggingface", lambda *_: (True, "hf ok"))
+    monkeypatch.setattr("scholaraio.services.setup._check_graphviz_dot", lambda *_: (True, "/usr/bin/dot"))
+    monkeypatch.setattr("scholaraio.services.setup._check_inkscape", lambda *_: (True, "/usr/bin/inkscape"))
     monkeypatch.setattr("scholaraio.services.setup.recommend_pdf_parser", lambda *args: ("MinerU", "both reachable"))
 
     results = run_check(cfg, "zh")
@@ -167,6 +191,8 @@ def test_run_check_includes_pdf_office_and_draw_dependency_groups(monkeypatch):
     assert "PDF 依赖" in labels
     assert "Office 依赖" in labels
     assert "绘图依赖" in labels
+    assert "Graphviz dot" in labels
+    assert "Inkscape" in labels
 
 
 def test_run_check_includes_optional_api_configuration_statuses(monkeypatch):
