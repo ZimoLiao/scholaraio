@@ -23,6 +23,7 @@ providers/mineru.py — MinerU PDF → Markdown helpers
 输出文件
 --------
     <pdf_stem>.md               主输出, MinerU 转换后的 Markdown
+    <pdf_stem>_images/           (如有) MinerU 返回的图片资产, Markdown 链接会指向该目录
     <pdf_stem>_content_list.json  (可选) MinerU 结构化内容列表
 
     输出位置: 默认与 PDF 同目录, 可通过 -o/--output-dir 指定统一输出目录。
@@ -472,17 +473,21 @@ def convert_pdf(pdf_path: Path, opts: ConvertOptions) -> ConvertResult:
         result.error = f"No markdown content in response. Keys: {list(data.keys()) if isinstance(data, dict) else type(data).__name__}"
         return result
 
+    artifact_stem = _safe_pdf_artifact_stem(pdf_path)
+    image_ref_replacements = _save_extracted_images(data, out_dir, artifact_stem)
+    if image_ref_replacements:
+        md_content = _rewrite_saved_image_refs(md_content, image_ref_replacements)
+
     # Write markdown
     md_path.write_text(md_content, encoding="utf-8")
     result.success = True
     result.md_size = len(md_content.encode("utf-8"))
-    _save_extracted_images(data, out_dir)
 
     # Optionally save content_list JSON
     if opts.save_content_list:
         cl = _extract_field(data, "content_list")
         if cl:
-            cl_path = out_dir / f"{_safe_pdf_artifact_stem(pdf_path)}_content_list.json"
+            cl_path = out_dir / f"{artifact_stem}_content_list.json"
             cl_path.write_text(json.dumps(cl, ensure_ascii=False, indent=2), encoding="utf-8")
 
     _log.info("-> %s (%s, %.1fs)", md_path.name, _fmt_size(result.md_size), result.elapsed_seconds)
@@ -538,12 +543,13 @@ def _extract_field(data, field_name):
     return data.get(field_name)
 
 
-def _save_extracted_images(data, out_dir: Path) -> None:
+def _save_extracted_images(data, out_dir: Path, artifact_stem: str) -> dict[str, str]:
     images = _extract_field(data, "images")
     if not isinstance(images, dict):
-        return
+        return {}
 
-    images_dir = out_dir / "images"
+    images_dir = out_dir / f"{artifact_stem}_images"
+    ref_replacements: dict[str, str] = {}
     saved = 0
     for raw_name, payload in images.items():
         filename = _safe_image_filename(raw_name)
@@ -555,9 +561,18 @@ def _save_extracted_images(data, out_dir: Path) -> None:
             continue
         images_dir.mkdir(parents=True, exist_ok=True)
         (images_dir / filename).write_bytes(image_bytes)
+        ref_replacements[f"images/{filename}"] = f"{images_dir.name}/{filename}"
         saved += 1
     if saved:
         _log.debug("saved %d MinerU images to %s", saved, images_dir)
+    return ref_replacements
+
+
+def _rewrite_saved_image_refs(md_content: str, ref_replacements: dict[str, str]) -> str:
+    rewritten = md_content
+    for old_ref, new_ref in ref_replacements.items():
+        rewritten = rewritten.replace(old_ref, new_ref)
+    return rewritten
 
 
 def _safe_image_filename(raw_name: object) -> str:
