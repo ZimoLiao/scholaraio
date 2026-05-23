@@ -199,6 +199,44 @@ def test_fetch_pdf_normalizes_pdf_header_to_byte_zero(tmp_path: Path) -> None:
     assert result.path.read_bytes() == PDF_BYTES
 
 
+def test_valid_pdf_payload_reads_only_header(tmp_path: Path, monkeypatch) -> None:
+    from scholaraio.services import pdf_fetch
+
+    path = tmp_path / "large.pdf"
+    path.write_bytes(PDF_BYTES + (b"x" * 1024 * 1024))
+
+    def fail_read_bytes(_self: Path) -> bytes:
+        raise AssertionError("validation should not read the whole PDF")
+
+    monkeypatch.setattr(Path, "read_bytes", fail_read_bytes)
+
+    assert pdf_fetch._valid_pdf_payload(path, "application/pdf") is True
+
+
+def test_normalize_pdf_header_streams_without_full_file_read(tmp_path: Path, monkeypatch) -> None:
+    from scholaraio.services import pdf_fetch
+
+    path = tmp_path / "prefixed-large.pdf"
+    with path.open("wb") as fh:
+        fh.write(b"\x00publisher-banner\n")
+        fh.write(PDF_BYTES)
+        fh.write(b"x" * 1024 * 1024)
+
+    def fail_read_bytes(_self: Path) -> bytes:
+        raise AssertionError("normalization should not read the whole PDF")
+
+    def fail_write_bytes(_self: Path, _data: bytes) -> int:
+        raise AssertionError("normalization should not rewrite from an in-memory bytes object")
+
+    monkeypatch.setattr(Path, "read_bytes", fail_read_bytes)
+    monkeypatch.setattr(Path, "write_bytes", fail_write_bytes)
+
+    pdf_fetch._normalize_pdf_header(path)
+
+    with path.open("rb") as fh:
+        assert fh.read(5) == b"%PDF-"
+
+
 def test_refetch_existing_paper_uses_source_url_and_replaces_canonical_pdf(tmp_path: Path) -> None:
     from scholaraio.services.pdf_fetch import refetch_paper_pdf
 

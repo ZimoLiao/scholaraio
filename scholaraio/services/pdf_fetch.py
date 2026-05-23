@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 import tempfile
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -154,18 +155,32 @@ def _locator_to_url(locator: str) -> str:
 
 def _valid_pdf_payload(path: Path, content_type: str) -> bool:
     try:
-        head = path.read_bytes()[:1024]
+        with path.open("rb") as fh:
+            head = fh.read(1024)
     except OSError:
         return False
     return b"%PDF-" in head
 
 
 def _normalize_pdf_header(path: Path) -> None:
-    data = path.read_bytes()
-    offset = data[:1024].find(b"%PDF-")
-    if offset <= 0:
-        return
-    path.write_bytes(data[offset:])
+    tmp_path: Path | None = None
+    try:
+        with path.open("rb") as src:
+            head = src.read(1024)
+            offset = head.find(b"%PDF-")
+            if offset <= 0:
+                return
+            with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as tmp:
+                tmp_path = Path(tmp.name)
+                tmp.write(head[offset:])
+                shutil.copyfileobj(src, tmp)
+        if tmp_path is not None:
+            tmp_path.replace(path)
+            tmp_path = None
+    except Exception:
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
+        raise
 
 
 def _save_pdf_response(
