@@ -166,6 +166,34 @@ def test_fetch_pdf_saves_initial_pdf_response_without_second_get(tmp_path: Path)
     assert request_counts["/signed-download"] == 1
 
 
+def test_fetch_pdf_closes_owned_session_after_download(tmp_path: Path, monkeypatch) -> None:
+    from scholaraio.services import pdf_fetch
+
+    sessions: list[dict[str, bool]] = []
+    original_session = pdf_fetch._session
+
+    def tracking_session(*, direct: bool, timeout: float):
+        session = original_session(direct=direct, timeout=timeout)
+        state = {"closed": False}
+        original_close = session.close
+
+        def close() -> None:
+            state["closed"] = True
+            original_close()
+
+        session.close = close
+        sessions.append(state)
+        return session
+
+    monkeypatch.setattr(pdf_fetch, "_session", tracking_session)
+
+    with _http_server({"/paper.pdf": (200, "application/pdf", PDF_BYTES)}) as base_url:
+        result = pdf_fetch.fetch_pdf(f"{base_url}/paper.pdf", tmp_path, direct=True)
+
+    assert result.status == "downloaded"
+    assert sessions == [{"closed": True}]
+
+
 def test_fetch_pdf_preserves_pdf_suffix_after_long_title_truncation(tmp_path: Path) -> None:
     from scholaraio.services.pdf_fetch import fetch_pdf
 
@@ -238,7 +266,7 @@ def test_valid_pdf_payload_reads_only_header(tmp_path: Path, monkeypatch) -> Non
 
     monkeypatch.setattr(Path, "read_bytes", fail_read_bytes)
 
-    assert pdf_fetch._valid_pdf_payload(path, "application/pdf") is True
+    assert pdf_fetch._valid_pdf_payload(path) is True
 
 
 def test_normalize_pdf_header_streams_without_full_file_read(tmp_path: Path, monkeypatch) -> None:
@@ -316,6 +344,54 @@ def test_batch_refetch_skips_papers_without_locator(tmp_path: Path) -> None:
     assert len(results) == 1
     assert results[0].status == "skipped"
     assert "no DOI or source_url" in results[0].message
+
+
+def test_batch_refetch_reuses_and_closes_one_session(tmp_path: Path, monkeypatch) -> None:
+    from scholaraio.services import pdf_fetch
+
+    sessions: list[dict[str, bool]] = []
+    original_session = pdf_fetch._session
+
+    def tracking_session(*, direct: bool, timeout: float):
+        session = original_session(direct=direct, timeout=timeout)
+        state = {"closed": False}
+        original_close = session.close
+
+        def close() -> None:
+            state["closed"] = True
+            original_close()
+
+        session.close = close
+        sessions.append(state)
+        return session
+
+    monkeypatch.setattr(pdf_fetch, "_session", tracking_session)
+
+    routes: dict[str, tuple[int, str, bytes]] = {}
+    with _http_server(routes) as base_url:
+        papers_dir = tmp_path / "papers"
+        paper_dirs: list[Path] = []
+        for idx in range(2):
+            paper_dir = papers_dir / f"Doe-2026-Reuse-Session-{idx}"
+            paper_dirs.append(paper_dir)
+            paper_dir.mkdir(parents=True)
+            (paper_dir / "meta.json").write_text(
+                json.dumps({"id": f"paper-{idx}", "source_url": f"{base_url}/article-{idx}"}),
+                encoding="utf-8",
+            )
+            (paper_dir / f"{paper_dir.name}.pdf").write_bytes(b"%PDF-1.4\nold\n%%EOF\n")
+            routes[f"/article-{idx}"] = (
+                200,
+                "text/html; charset=utf-8",
+                f'<meta name="citation_pdf_url" content="{base_url}/paper-{idx}.pdf">'.encode(),
+            )
+            routes[f"/paper-{idx}.pdf"] = (200, "application/pdf", PDF_BYTES)
+
+        cfg = _build_config({"paths": {"papers_dir": str(papers_dir)}}, tmp_path)
+        results = pdf_fetch.batch_refetch_pdfs(cfg, paper_dirs=paper_dirs, direct=True, force=True)
+
+    assert [result.status for result in results] == ["downloaded", "downloaded"]
+    assert sessions == [{"closed": True}]
 
 
 def test_fetch_pdf_cli_downloads_new_locator_to_configured_inbox(tmp_path: Path) -> None:

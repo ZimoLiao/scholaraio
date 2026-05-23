@@ -156,7 +156,7 @@ def _locator_to_url(locator: str) -> str:
     raise PdfFetchError(f"Could not resolve title to DOI: {locator}")
 
 
-def _valid_pdf_payload(path: Path, content_type: str) -> bool:
+def _valid_pdf_payload(path: Path) -> bool:
     try:
         with path.open("rb") as fh:
             head = fh.read(1024)
@@ -219,7 +219,7 @@ def _save_pdf_response(
                 bytes_downloaded += len(chunk)
                 tmp.write(chunk)
 
-        if not _valid_pdf_payload(tmp_path, content_type):
+        if not _valid_pdf_payload(tmp_path):
             raise PdfFetchError(
                 f"Downloaded payload is not a PDF: {locator} ({content_type or 'unknown content type'})"
             )
@@ -283,9 +283,21 @@ def fetch_pdf(
     filename: str | None = None,
     force: bool = False,
     timeout: float = 60.0,
+    session: requests.Session | None = None,
 ) -> PdfFetchResult:
     """Resolve and download a PDF using the current network access context."""
-    session = _session(direct=direct, timeout=timeout)
+    if session is None:
+        with _session(direct=direct, timeout=timeout) as owned_session:
+            return fetch_pdf(
+                locator,
+                out_dir,
+                direct=direct,
+                filename=filename,
+                force=force,
+                timeout=timeout,
+                session=owned_session,
+            )
+
     url = _locator_to_url(locator)
     if _is_pdf_url(url):
         return _download_pdf_url(url, out_dir, session=session, filename=filename, force=force)
@@ -343,6 +355,7 @@ def refetch_paper_pdf(
     direct: bool = False,
     force: bool = False,
     timeout: float = 60.0,
+    session: requests.Session | None = None,
 ) -> PdfFetchResult:
     meta = read_meta(paper_dir)
     locator = _paper_locator(meta)
@@ -367,6 +380,7 @@ def refetch_paper_pdf(
         filename=target.name,
         force=force,
         timeout=timeout,
+        session=session,
     )
 
 
@@ -380,15 +394,25 @@ def batch_refetch_pdfs(
 ) -> list[PdfFetchResult]:
     selected = list(paper_dirs) if paper_dirs is not None else list(iter_paper_dirs(cfg.papers_dir))
     results: list[PdfFetchResult] = []
-    for paper_dir in selected:
-        try:
-            results.append(refetch_paper_pdf(paper_dir, cfg, direct=direct, force=force, timeout=timeout))
-        except (requests.RequestException, PdfFetchError) as exc:
-            results.append(
-                PdfFetchResult(
-                    status="failed",
-                    locator=paper_dir.name,
-                    message=str(exc),
+    with _session(direct=direct, timeout=timeout) as session:
+        for paper_dir in selected:
+            try:
+                results.append(
+                    refetch_paper_pdf(
+                        paper_dir,
+                        cfg,
+                        direct=direct,
+                        force=force,
+                        timeout=timeout,
+                        session=session,
+                    )
                 )
-            )
+            except (requests.RequestException, PdfFetchError) as exc:
+                results.append(
+                    PdfFetchResult(
+                        status="failed",
+                        locator=paper_dir.name,
+                        message=str(exc),
+                    )
+                )
     return results
