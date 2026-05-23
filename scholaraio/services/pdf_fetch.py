@@ -251,17 +251,6 @@ def _download_pdf_url(
     force: bool = False,
     source: str = "direct_pdf_url",
 ) -> PdfFetchResult:
-    target = out_dir / (filename or _safe_filename(url))
-    if target.exists() and not force:
-        return PdfFetchResult(
-            status="skipped",
-            locator=url,
-            pdf_url=url,
-            path=target,
-            source=source,
-            message=f"PDF already exists: {target}",
-        )
-
     out_dir.mkdir(parents=True, exist_ok=True)
     with session.get(url, stream=True, allow_redirects=True) as response:
         response.raise_for_status()

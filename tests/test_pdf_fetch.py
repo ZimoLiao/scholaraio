@@ -15,21 +15,26 @@ from typing import ClassVar
 from scholaraio.core.config import _build_config
 
 PDF_BYTES = b"%PDF-1.4\n% scholar aio test pdf\n1 0 obj\n<<>>\nendobj\n%%EOF\n"
+Route = tuple[int, str, bytes] | tuple[int, str, bytes, dict[str, str]]
 
 
 class _RouteHandler(BaseHTTPRequestHandler):
-    routes: ClassVar[dict[str, tuple[int, str, bytes]]] = {}
+    routes: ClassVar[dict[str, Route]] = {}
     request_counts: ClassVar[dict[str, int]] = {}
 
     def do_GET(self) -> None:
         self.request_counts[self.path] = self.request_counts.get(self.path, 0) + 1
-        status, content_type, body = self.routes.get(
+        route = self.routes.get(
             self.path,
             (404, "text/plain", b"missing"),
         )
+        status, content_type, body = route[:3]
+        headers = route[3] if len(route) > 3 else {}
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        for name, value in headers.items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
 
@@ -38,9 +43,7 @@ class _RouteHandler(BaseHTTPRequestHandler):
 
 
 @contextmanager
-def _http_server(
-    routes: dict[str, tuple[int, str, bytes]], request_counts: dict[str, int] | None = None
-) -> Iterator[str]:
+def _http_server(routes: dict[str, Route], request_counts: dict[str, int] | None = None) -> Iterator[str]:
     class Handler(_RouteHandler):
         pass
 
@@ -164,6 +167,31 @@ def test_fetch_pdf_saves_initial_pdf_response_without_second_get(tmp_path: Path)
     assert result.path is not None
     assert result.path.read_bytes() == PDF_BYTES
     assert request_counts["/signed-download"] == 1
+
+
+def test_download_pdf_url_checks_existing_file_after_redirect(tmp_path: Path) -> None:
+    from scholaraio.services import pdf_fetch
+
+    (tmp_path / "download.pdf").write_bytes(b"%PDF-1.4\nold\n%%EOF\n")
+    request_counts: dict[str, int] = {}
+    routes: dict[str, Route] = {}
+    with _http_server(routes, request_counts=request_counts) as base_url:
+        routes["/download"] = (
+            302,
+            "text/plain",
+            b"",
+            {"Location": f"{base_url}/final.pdf"},
+        )
+        routes["/final.pdf"] = (200, "application/pdf", PDF_BYTES)
+        with pdf_fetch._session(direct=True, timeout=5.0) as session:
+            result = pdf_fetch._download_pdf_url(f"{base_url}/download", tmp_path, session=session)
+
+    assert result.status == "downloaded"
+    assert result.path == tmp_path / "final.pdf"
+    assert result.path.read_bytes() == PDF_BYTES
+    assert (tmp_path / "download.pdf").read_bytes() == b"%PDF-1.4\nold\n%%EOF\n"
+    assert request_counts["/download"] == 1
+    assert request_counts["/final.pdf"] == 1
 
 
 def test_fetch_pdf_closes_owned_session_after_download(tmp_path: Path, monkeypatch) -> None:
