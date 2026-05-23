@@ -160,10 +160,35 @@ def test_fetch_pdf_preserves_pdf_suffix_after_long_title_truncation(tmp_path: Pa
 
     assert result.path is not None
     assert result.path.name.endswith(".pdf")
-    assert len(result.path.name) <= 180
+    assert len(result.path.name.encode("utf-8")) <= 255
 
 
-def test_fetch_pdf_accepts_pdf_header_within_first_kilobyte(tmp_path: Path) -> None:
+def test_fetch_pdf_limits_multibyte_filename_to_filesystem_bytes(tmp_path: Path) -> None:
+    from scholaraio.services.pdf_fetch import fetch_pdf
+
+    long_title = "超长中文标题" * 80
+    routes: dict[str, tuple[int, str, bytes]] = {}
+    with _http_server(routes) as base_url:
+        routes["/article"] = (
+            200,
+            "text/html; charset=utf-8",
+            (
+                "<html><head>"
+                f'<meta name="citation_title" content="{long_title}">'
+                f'<meta name="citation_pdf_url" content="{base_url}/paper.pdf">'
+                "</head></html>"
+            ).encode(),
+        )
+        routes["/paper.pdf"] = (200, "application/pdf", PDF_BYTES)
+
+        result = fetch_pdf(f"{base_url}/article", tmp_path, direct=True)
+
+    assert result.path is not None
+    assert result.path.name.endswith(".pdf")
+    assert len(result.path.name.encode("utf-8")) <= 255
+
+
+def test_fetch_pdf_normalizes_pdf_header_to_byte_zero(tmp_path: Path) -> None:
     from scholaraio.services.pdf_fetch import fetch_pdf
 
     prefixed_pdf = b"\x00publisher-banner\n" + PDF_BYTES
@@ -171,7 +196,7 @@ def test_fetch_pdf_accepts_pdf_header_within_first_kilobyte(tmp_path: Path) -> N
         result = fetch_pdf(f"{base_url}/paper.pdf", tmp_path, direct=True)
 
     assert result.path is not None
-    assert result.path.read_bytes() == prefixed_pdf
+    assert result.path.read_bytes() == PDF_BYTES
 
 
 def test_refetch_existing_paper_uses_source_url_and_replaces_canonical_pdf(tmp_path: Path) -> None:

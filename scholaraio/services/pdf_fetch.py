@@ -11,6 +11,7 @@ from urllib.parse import unquote, urljoin, urlparse
 
 import requests
 
+from scholaraio.services.ingest_metadata import _sanitize_for_filename
 from scholaraio.stores.papers import iter_paper_dirs, pdf_path, read_meta
 
 PDF_MIME_HINTS = {
@@ -86,8 +87,7 @@ def _safe_filename(text: str, *, default: str = "paper.pdf") -> str:
         raw = default
     if not raw.lower().endswith(".pdf"):
         raw += ".pdf"
-    stem = raw[:-4]
-    stem = stem[:176].rstrip(".-")
+    stem = _sanitize_for_filename(raw[:-4], max_bytes=251).rstrip(".-")
     if not stem:
         stem = "paper"
     return f"{stem}.pdf"
@@ -160,6 +160,14 @@ def _valid_pdf_payload(path: Path, content_type: str) -> bool:
     return b"%PDF-" in head
 
 
+def _normalize_pdf_header(path: Path) -> None:
+    data = path.read_bytes()
+    offset = data[:1024].find(b"%PDF-")
+    if offset <= 0:
+        return
+    path.write_bytes(data[offset:])
+
+
 def _save_pdf_response(
     response: requests.Response,
     out_dir: Path,
@@ -197,6 +205,7 @@ def _save_pdf_response(
             raise PdfFetchError(
                 f"Downloaded payload is not a PDF: {locator} ({content_type or 'unknown content type'})"
             )
+        _normalize_pdf_header(tmp_path)
 
         tmp_path.replace(target)
     except Exception:
