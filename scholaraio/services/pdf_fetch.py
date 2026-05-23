@@ -396,7 +396,7 @@ def batch_refetch_pdfs(
                         session=session,
                     )
                 )
-            except (requests.RequestException, PdfFetchError) as exc:
+            except (OSError, ValueError, requests.RequestException, PdfFetchError) as exc:
                 results.append(
                     PdfFetchResult(
                         status="failed",

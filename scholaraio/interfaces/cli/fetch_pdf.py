@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
 import tempfile
+from contextlib import ExitStack
 from pathlib import Path
 
 
@@ -78,8 +80,20 @@ def _paper_ids(args: argparse.Namespace) -> list[str]:
     return [str(item).strip() for item in values if str(item).strip()]
 
 
-def _download_new_locator(args: argparse.Namespace, cfg) -> None:
+def _run_ingest_for_pdf(pdf_path: Path, cfg, *, force: bool) -> None:
     from scholaraio.services.ingest.pipeline import PRESETS, run_pipeline
+
+    with tempfile.TemporaryDirectory(prefix="scholaraio_pdf_ingest_") as tmpdir:
+        tmp_inbox = Path(tmpdir)
+        shutil.copy2(pdf_path, tmp_inbox / pdf_path.name)
+        run_pipeline(
+            PRESETS["ingest"],
+            cfg,
+            {"inbox_dir": tmp_inbox, "force": force, "include_aux_inboxes": False},
+        )
+
+
+def _download_new_locator(args: argparse.Namespace, cfg) -> None:
     from scholaraio.services.pdf_fetch import fetch_pdf
 
     locator = str(args.locator).strip()
@@ -89,31 +103,30 @@ def _download_new_locator(args: argparse.Namespace, cfg) -> None:
     direct = bool(getattr(args, "direct", False))
     timeout = float(getattr(args, "timeout", 60.0))
 
-    try:
+    with ExitStack() as stack:
         if ingest and not out_dir_arg:
-            with tempfile.TemporaryDirectory(prefix="scholaraio_pdf_fetch_") as tmpdir:
-                tmp_inbox = Path(tmpdir)
-                result = fetch_pdf(locator, tmp_inbox, direct=direct, force=force, timeout=timeout)
-                _print_result(result)
-                run_pipeline(
-                    PRESETS["ingest"],
-                    cfg,
-                    {"inbox_dir": tmp_inbox, "force": force, "include_aux_inboxes": False},
-                )
-            return
+            out_dir = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="scholaraio_pdf_fetch_")))
+        elif out_dir_arg:
+            out_dir = Path(out_dir_arg).expanduser().resolve()
+        else:
+            out_dir = _default_inbox_dir(cfg)
 
-        out_dir = Path(out_dir_arg).expanduser().resolve() if out_dir_arg else _default_inbox_dir(cfg)
-        result = fetch_pdf(locator, out_dir, direct=direct, force=force, timeout=timeout)
+        try:
+            result = fetch_pdf(locator, out_dir, direct=direct, force=force, timeout=timeout)
+        except Exception as exc:
+            _ui(f"PDF fetch failed: {exc}")
+            sys.exit(1)
+
         _print_result(result)
         if ingest:
-            run_pipeline(
-                PRESETS["ingest"],
-                cfg,
-                {"inbox_dir": out_dir, "force": force, "include_aux_inboxes": False},
-            )
-    except Exception as exc:
-        _ui(f"PDF fetch failed: {exc}")
-        sys.exit(1)
+            if result.path is None:
+                _ui("PDF ingest failed: no PDF path was produced")
+                sys.exit(1)
+            try:
+                _run_ingest_for_pdf(result.path, cfg, force=force)
+            except Exception as exc:
+                _ui(f"PDF ingest failed: {exc}")
+                sys.exit(1)
 
 
 def _print_batch_summary(results) -> None:

@@ -31,6 +31,9 @@ scholaraio fetch-pdf 10.xxxx/example --direct
 # Download and immediately run the normal ingest pipeline for that new PDF
 scholaraio fetch-pdf 10.xxxx/example --direct --ingest
 
+# Save the fetched PDF to a chosen directory; with --ingest, only that fetched file is ingested
+scholaraio fetch-pdf 10.xxxx/example --direct --out-dir workspace/pdfs --ingest
+
 # Refresh canonical PDFs for already ingested records
 scholaraio fetch-pdf --paper <paper-id> --direct --force
 scholaraio fetch-pdf --paper <paper-id-1> <paper-id-2> --direct --force
@@ -39,7 +42,7 @@ scholaraio fetch-pdf --all --direct --force
 
 `fetch-pdf` is a native ScholarAIO acquisition helper, not a Paper Fetch Skill or MCP dependency. It does not bypass paywalls or access controls; it only uses the user's current legal network and publisher session behavior. `--direct` ignores proxy environment variables, which is useful when a campus network has access but a local proxy would route traffic elsewhere.
 
-New downloads can enter the regular PDF-to-Markdown pipeline with `--ingest`. Refetching PDFs for existing records only replaces the canonical PDF; it intentionally does not regenerate `paper.md`, so use `attach-pdf` or a conversion workflow when Markdown must be rebuilt.
+New downloads can enter the regular PDF-to-Markdown pipeline with `--ingest`. When `--ingest` is combined with `--out-dir`, ScholarAIO still ingests only the fetched PDF by copying it through a temporary single-file inbox; unrelated PDFs already present in `--out-dir` are not processed. Refetching PDFs for existing records only replaces the canonical PDF; it intentionally does not regenerate `paper.md`, so use `attach-pdf` or a conversion workflow when Markdown must be rebuilt.
 
 ## Five Inboxes
 

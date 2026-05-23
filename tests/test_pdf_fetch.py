@@ -12,6 +12,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import ClassVar
 
+import pytest
+
 from scholaraio.core.config import _build_config
 
 PDF_BYTES = b"%PDF-1.4\n% scholar aio test pdf\n1 0 obj\n<<>>\nendobj\n%%EOF\n"
@@ -374,6 +376,40 @@ def test_batch_refetch_skips_papers_without_locator(tmp_path: Path) -> None:
     assert "no DOI or source_url" in results[0].message
 
 
+def test_batch_refetch_records_bad_metadata_and_continues(tmp_path: Path) -> None:
+    from scholaraio.services.pdf_fetch import batch_refetch_pdfs
+
+    routes: dict[str, tuple[int, str, bytes]] = {}
+    with _http_server(routes) as base_url:
+        papers_dir = tmp_path / "papers"
+        bad_dir = papers_dir / "Broken-Metadata"
+        bad_dir.mkdir(parents=True)
+        (bad_dir / "meta.json").write_text("{not-json", encoding="utf-8")
+
+        good_dir = papers_dir / "Doe-2026-Good-Paper"
+        good_dir.mkdir(parents=True)
+        (good_dir / "meta.json").write_text(
+            json.dumps({"id": "good-paper", "source_url": f"{base_url}/paper.pdf"}),
+            encoding="utf-8",
+        )
+        routes["/paper.pdf"] = (200, "application/pdf", PDF_BYTES)
+
+        cfg = _build_config({"paths": {"papers_dir": str(papers_dir)}}, tmp_path)
+        results = batch_refetch_pdfs(
+            cfg,
+            paper_dirs=[bad_dir, good_dir],
+            direct=True,
+            force=True,
+            timeout=5.0,
+        )
+
+    assert [result.status for result in results] == ["failed", "downloaded"]
+    assert results[0].locator == bad_dir.name
+    assert "Malformed JSON" in results[0].message
+    assert results[1].path == good_dir / f"{good_dir.name}.pdf"
+    assert results[1].path.read_bytes() == PDF_BYTES
+
+
 def test_batch_refetch_reuses_and_closes_one_session(tmp_path: Path, monkeypatch) -> None:
     from scholaraio.services import pdf_fetch
 
@@ -459,6 +495,82 @@ def test_fetch_pdf_cli_downloads_new_locator_to_configured_inbox(tmp_path: Path)
     pdfs = sorted(cfg.inbox_dir.glob("*.pdf"))
     assert len(pdfs) == 1
     assert pdfs[0].read_bytes() == PDF_BYTES
+
+
+def test_fetch_pdf_cli_ingest_uses_single_file_inbox_with_out_dir(tmp_path: Path, monkeypatch) -> None:
+    from scholaraio.interfaces.cli.fetch_pdf import cmd_fetch_pdf
+    from scholaraio.services.ingest import pipeline as pipeline_mod
+
+    out_dir = tmp_path / "downloads"
+    out_dir.mkdir()
+    (out_dir / "unrelated.pdf").write_bytes(PDF_BYTES)
+    captured: dict[str, object] = {}
+
+    def fake_run_pipeline(_preset, _cfg, options) -> None:
+        inbox_dir = Path(options["inbox_dir"])
+        captured["same_as_out_dir"] = inbox_dir == out_dir
+        captured["pdf_names"] = sorted(path.name for path in inbox_dir.glob("*.pdf"))
+
+    monkeypatch.setattr(pipeline_mod, "run_pipeline", fake_run_pipeline)
+
+    with _http_server({"/paper.pdf": (200, "application/pdf", PDF_BYTES)}) as base_url:
+        cfg = _build_config({"paths": {"inbox_dir": "queues/inbox", "papers_dir": "papers"}}, tmp_path)
+        args = argparse.Namespace(
+            locator=f"{base_url}/paper.pdf",
+            paper=None,
+            all=False,
+            out_dir=str(out_dir),
+            direct=True,
+            force=False,
+            ingest=True,
+            timeout=5.0,
+        )
+
+        cmd_fetch_pdf(args, cfg)
+
+    assert captured["same_as_out_dir"] is False
+    assert captured["pdf_names"] == ["paper.pdf"]
+    assert (out_dir / "unrelated.pdf").read_bytes() == PDF_BYTES
+    assert (out_dir / "paper.pdf").read_bytes() == PDF_BYTES
+
+
+def test_fetch_pdf_cli_reports_ingest_failure_separately(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from scholaraio.interfaces.cli import fetch_pdf as fetch_pdf_cli
+    from scholaraio.services.ingest import pipeline as pipeline_mod
+
+    messages: list[str] = []
+
+    def fake_run_pipeline(_preset, _cfg, _options) -> None:
+        raise RuntimeError("ingest exploded")
+
+    monkeypatch.setattr(fetch_pdf_cli, "_ui", lambda msg="": messages.append(msg))
+    monkeypatch.setattr(pipeline_mod, "run_pipeline", fake_run_pipeline)
+
+    with _http_server({"/paper.pdf": (200, "application/pdf", PDF_BYTES)}) as base_url:
+        out_dir = tmp_path / "downloads"
+        cfg = _build_config({"paths": {"inbox_dir": "queues/inbox", "papers_dir": "papers"}}, tmp_path)
+        args = argparse.Namespace(
+            locator=f"{base_url}/paper.pdf",
+            paper=None,
+            all=False,
+            out_dir=str(out_dir),
+            direct=True,
+            force=False,
+            ingest=True,
+            timeout=5.0,
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            fetch_pdf_cli.cmd_fetch_pdf(args, cfg)
+
+    output = "\n".join(messages)
+    assert exc_info.value.code == 1
+    assert "PDF ingest failed: ingest exploded" in output
+    assert "PDF fetch failed" not in output
+    assert (out_dir / "paper.pdf").read_bytes() == PDF_BYTES
 
 
 def test_fetch_pdf_parser_accepts_new_single_and_batch_modes() -> None:
