@@ -87,7 +87,8 @@ run the migration in the upgraded checkout that contains your `data/`,
 | **Citation Graph** | References & impact | Forward citations, backward citations, and shared-reference analysis |
 | **Layered Reading** | Read on demand | Start with metadata or the abstract, then move into conclusions or full text only when you need to |
 | **Local Library WebUI** | Browse and inspect | Open a read-only local UI for records, audit status, Markdown abstracts/conclusions, proceedings children, and PDFs without exposing library data to remote scripts |
-| **Multi-Source Import** | Connect your existing library | Import directly from reference managers, PDFs, and Markdown without rebuilding your library from scratch |
+| **Publisher PDF Fetch** | Use your current access | Fetch DOI or publisher-page PDFs through the user's legal network context, with direct campus-network mode and selected/all-library PDF refetch |
+| **Multi-Source Import** | Connect your existing library | Import directly from reference managers, fetched PDFs, local PDFs, and Markdown without rebuilding your library from scratch |
 | **Workspaces** | Organize by project | Manage paper subsets with scoped search and BibTeX export |
 | **Multi-Format Export** | BibTeX, RIS, Markdown, DOCX | Export your full library or a workspace for Zotero, Endnote, submission, or sharing |
 | **Metadata Scrub** | Incremental cleanup after enrich | Review and repair low-quality titles, authors, and years for non-standard documents, then mark reviewed records to skip future passes |
@@ -129,7 +130,7 @@ ScholarAIO is designed to be **agent-agnostic**, but different agents expose dif
 
 Skills follow the open [AgentSkills.io](https://agentskills.io) standard, and `.agents/skills/` and `.qwen/skills/` are symlinks to `.claude/skills/` so different agents can discover and reuse the same skills. Qwen-specific project context lives in `.qwen/QWEN.md`.
 
-**Migrating from existing tools?** Import directly from Endnote (XML/RIS) and Zotero (Web API or local SQLite), with PDFs, metadata, and references brought over together. More import sources are on the roadmap.
+**Migrating from existing tools?** Import directly from Endnote (XML/RIS) and Zotero (Web API or local SQLite), with PDFs, metadata, and references brought over together. If your current network has publisher access, `scholaraio fetch-pdf` can also pull DOI or landing-page PDFs into the normal ingest flow or refresh canonical PDFs for existing library records.
 
 ## Configuration
 

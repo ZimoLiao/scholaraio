@@ -85,7 +85,8 @@ scholaraio index --rebuild
 | **引用图谱**                  | 参考文献与影响力               | 正向引用、反向引用、共同引用分析                                                            |
 | **分层阅读**                  | 按需加载                       | 先看元数据或摘要，再按需要深入到结论和全文，不必一开始就读完整篇                            |
 | **本地文献库 WebUI**          | 浏览与质检                     | 用只读本地界面查看记录、审计状态、Markdown 摘要/结论、proceedings 子论文和 PDF，不通过远程脚本暴露文献库数据 |
-| **多源导入**                  | 现有文献库可直接接入           | 从现有文献管理工具、PDF 和 Markdown 直接导入，不用从零重建你的文献库                        |
+| **出版社 PDF 拉取**           | 使用你当前的访问权限           | 通过用户自己的合法网络环境从 DOI 或出版社页面拉取 PDF，支持校园网直连模式，以及单篇/批量重拉库内 canonical PDF |
+| **多源导入**                  | 现有文献库可直接接入           | 从现有文献管理工具、拉取到的 PDF、本地 PDF 和 Markdown 直接导入，不用从零重建你的文献库      |
 | **工作区**                    | 按项目整理                     | 论文子集管理，支持限定范围内的检索和 BibTeX 导出                                            |
 | **多格式导出**                | BibTeX / RIS / Markdown / DOCX | 可导出整个文献库或工作区，直接用于 Zotero、Endnote、投稿或分享                              |
 | **元数据清洗**                | enrich 后增量修整              | 对非标准文档产生的低质量标题、作者和年份做审阅式修复，并给已检查条目标记，便于后续增量跳过  |
@@ -128,7 +129,7 @@ ScholarAIO 的设计目标是 **agent 无关**，但不同 agent 的接入方式
 
 Skills 遵循开放的 [AgentSkills.io](https://agentskills.io) 标准，`.agents/skills/` 与 `.qwen/skills/` 均为 `.claude/skills/` 的符号链接，方便不同 agent 发现和复用。Qwen 的项目上下文文件位于 `.qwen/QWEN.md`。
 
-**从现有工具迁移？** 支持从 Endnote（XML/RIS）和 Zotero（Web API 或本地 SQLite）直接导入——PDF、元数据、引用关系一并迁入。更多导入源持续开发中。
+**从现有工具迁移？** 支持从 Endnote（XML/RIS）和 Zotero（Web API 或本地 SQLite）直接导入——PDF、元数据、引用关系一并迁入。如果你当前网络本身有出版社访问权限，也可以用 `scholaraio fetch-pdf` 从 DOI 或出版社页面拉取 PDF 进入正常入库流程，或为库内已有记录重拉 canonical PDF。
 
 ## 配置说明
 

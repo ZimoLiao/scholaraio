@@ -66,7 +66,7 @@ scholaraio fetch-pdf --all [--direct] [--force]
 - `refetch` refreshes citation counts, bibliographic metadata, and structured `references` for already ingested papers.
 - `refetch --references-only` / `--refs-only` limits the run to DOI papers whose `references` field is still empty; in single-paper mode it only updates `references`.
 - `attach-pdf` attaches a source PDF to an existing paper directory, stores it beside `paper.md` using the paper directory stem, and regenerates Markdown. It refuses to replace an existing canonical PDF unless `--force` is supplied.
-- `fetch-pdf --paper <id> [<id> ...]` re-downloads canonical PDFs for selected existing library papers using `source_url` or DOI; `fetch-pdf --all` applies the same logic to the whole library and reports downloaded/skipped/failed counts.
+- `fetch-pdf --paper <id> [<id> ...]` re-downloads canonical PDFs for selected existing library papers using `source_url` or DOI; `fetch-pdf --all` applies the same logic to the whole library and reports downloaded/skipped/failed counts. Refetching PDFs does not regenerate `paper.md`; use `attach-pdf` or the ingest conversion path when Markdown needs to be rebuilt.
 - Current preset values are `full`, `ingest`, `enrich`, and `reindex`.
 - Run `scholaraio pipeline --help` for pipeline options such as `--steps`, `--dry-run`, `--no-api`, and `--rebuild`.
 

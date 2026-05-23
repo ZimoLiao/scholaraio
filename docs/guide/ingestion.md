@@ -20,6 +20,27 @@ If `translate.auto_translate: true` is enabled in config, the pipeline will also
 
 Older roots such as `data/inbox/` and `data/papers/` are migration inputs, not normal runtime inputs. Upgrade them with `scholaraio migrate upgrade --migration-id <id> --confirm` before relying on the current ingest flow.
 
+## Publisher PDF Fetch
+
+When your current network has legitimate access to a publisher PDF, use `fetch-pdf` instead of manually downloading the file:
+
+```bash
+# Download a DOI, publisher landing page, direct PDF URL, or title to the configured paper inbox
+scholaraio fetch-pdf 10.xxxx/example --direct
+
+# Download and immediately run the normal ingest pipeline for that new PDF
+scholaraio fetch-pdf 10.xxxx/example --direct --ingest
+
+# Refresh canonical PDFs for already ingested records
+scholaraio fetch-pdf --paper <paper-id> --direct --force
+scholaraio fetch-pdf --paper <paper-id-1> <paper-id-2> --direct --force
+scholaraio fetch-pdf --all --direct --force
+```
+
+`fetch-pdf` is a native ScholarAIO acquisition helper, not a Paper Fetch Skill or MCP dependency. It does not bypass paywalls or access controls; it only uses the user's current legal network and publisher session behavior. `--direct` ignores proxy environment variables, which is useful when a campus network has access but a local proxy would route traffic elsewhere.
+
+New downloads can enter the regular PDF-to-Markdown pipeline with `--ingest`. Refetching PDFs for existing records only replaces the canonical PDF; it intentionally does not regenerate `paper.md`, so use `attach-pdf` or a conversion workflow when Markdown must be rebuilt.
+
 ## Five Inboxes
 
 | Inbox | Path | Behavior |

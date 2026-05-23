@@ -7,6 +7,7 @@ ScholarAIO is a research infrastructure for AI agents. You interact with your li
 ## Features
 
 - **PDF Ingestion**: Convert PDFs to structured Markdown via MinerU (cloud or local)
+- **Publisher PDF Fetch**: Download DOI or publisher-page PDFs through the user's current legal access context, including direct campus-network mode and selected/all-library refetch
 - **Hybrid Search**: FTS5 keyword search + FAISS semantic search + RRF fusion
 - **Topic Modeling**: BERTopic clustering with interactive HTML visualizations
 - **Citation Graph**: View references, citing papers, and shared references
