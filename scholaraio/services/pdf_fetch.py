@@ -120,7 +120,9 @@ def _candidate_pdf_urls(html: str, base_url: str) -> list[tuple[str, str]]:
     for match in META_PDF_RE.finditer(html):
         content = _extract_content(match.group(0))
         if content and (content.lower().startswith("http") or ".pdf" in content.lower()):
-            add(content, "landing:citation_pdf_url")
+            meta_name = match.group("name").lower()
+            source = "landing:citation_pdf_url" if meta_name == "citation_pdf_url" else f"landing:meta:{meta_name}"
+            add(content, source)
 
     for match in HREF_RE.finditer(html):
         href = match.group("href")
@@ -136,12 +138,13 @@ def _candidate_pdf_urls(html: str, base_url: str) -> list[tuple[str, str]]:
 
 def _locator_to_url(locator: str) -> str:
     text = locator.strip()
+    doi_url_prefix = "https://doi.org/"
+    if text.lower().startswith(doi_url_prefix):
+        text = text[len(doi_url_prefix) :].strip()
     if _is_url(text):
         return text
     if text.lower().startswith("doi:"):
         text = text.split(":", 1)[1].strip()
-    if text.lower().startswith("https://doi.org/"):
-        text = text.removeprefix("https://doi.org/")
     if DOI_RE.match(text):
         return f"https://doi.org/{text}"
     from scholaraio.services.ingest_metadata import query_crossref

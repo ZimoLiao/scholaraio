@@ -110,6 +110,34 @@ def test_fetch_pdf_discovers_citation_pdf_url_and_downloads_over_real_http(tmp_p
     assert result.bytes_downloaded == len(PDF_BYTES)
 
 
+def test_fetch_pdf_reports_actual_meta_pdf_source(tmp_path: Path) -> None:
+    from scholaraio.services.pdf_fetch import fetch_pdf
+
+    routes: dict[str, tuple[int, str, bytes]] = {}
+    with _http_server(routes) as base_url:
+        routes["/article"] = (
+            200,
+            "text/html; charset=utf-8",
+            (
+                "<html><head>"
+                f'<meta name="dc.identifier" content="{base_url}/paper.pdf">'
+                "</head><body>Article landing</body></html>"
+            ).encode(),
+        )
+        routes["/paper.pdf"] = (200, "application/pdf", PDF_BYTES)
+
+        result = fetch_pdf(f"{base_url}/article", tmp_path, direct=True)
+
+    assert result.path is not None
+    assert result.source == "landing:meta:dc.identifier"
+
+
+def test_locator_to_url_normalizes_case_insensitive_doi_org_url() -> None:
+    from scholaraio.services.pdf_fetch import _locator_to_url
+
+    assert _locator_to_url("https://DOI.ORG/10.1000/CaseSensitive") == ("https://doi.org/10.1000/CaseSensitive")
+
+
 def test_direct_fetch_ignores_proxy_environment_with_real_http(tmp_path: Path) -> None:
     from scholaraio.services.pdf_fetch import fetch_pdf
 
