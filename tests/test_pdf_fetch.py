@@ -534,6 +534,49 @@ def test_fetch_pdf_cli_ingest_uses_single_file_inbox_with_out_dir(tmp_path: Path
     assert (out_dir / "paper.pdf").read_bytes() == PDF_BYTES
 
 
+def test_fetch_pdf_cli_ingest_without_out_dir_reports_temporary_staging(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from scholaraio.interfaces.cli import fetch_pdf as fetch_pdf_cli
+    from scholaraio.services.ingest import pipeline as pipeline_mod
+
+    messages: list[str] = []
+    captured: dict[str, object] = {}
+
+    def fake_run_pipeline(_preset, _cfg, options) -> None:
+        inbox_dir = Path(options["inbox_dir"])
+        captured["same_as_configured_inbox"] = inbox_dir == _cfg.inbox_dir
+        captured["pdf_names"] = sorted(path.name for path in inbox_dir.glob("*.pdf"))
+
+    monkeypatch.setattr(fetch_pdf_cli, "_ui", lambda msg="": messages.append(msg))
+    monkeypatch.setattr(pipeline_mod, "run_pipeline", fake_run_pipeline)
+
+    with _http_server({"/paper.pdf": (200, "application/pdf", PDF_BYTES)}) as base_url:
+        cfg = _build_config({"paths": {"inbox_dir": "queues/inbox", "papers_dir": "papers"}}, tmp_path)
+        args = argparse.Namespace(
+            locator=f"{base_url}/paper.pdf",
+            paper=None,
+            all=False,
+            out_dir=None,
+            direct=True,
+            force=False,
+            ingest=True,
+            timeout=5.0,
+        )
+
+        fetch_pdf_cli.cmd_fetch_pdf(args, cfg)
+
+    output = "\n".join(messages)
+    assert "Staged PDF for ingest: paper.pdf" in output
+    assert "Downloaded PDF:" not in output
+    assert "scholaraio_pdf_fetch_" not in output
+    assert "scholaraio_pdf_ingest_" not in output
+    assert captured["same_as_configured_inbox"] is False
+    assert captured["pdf_names"] == ["paper.pdf"]
+    assert not list(cfg.inbox_dir.glob("*.pdf"))
+
+
 def test_fetch_pdf_cli_reports_ingest_failure_separately(
     tmp_path: Path,
     monkeypatch,

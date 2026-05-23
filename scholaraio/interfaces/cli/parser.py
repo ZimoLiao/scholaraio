@@ -444,7 +444,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p_pdf.add_argument("locator", nargs="?", help="DOI, landing page URL, direct PDF URL, or title")
     p_pdf.add_argument("--paper", nargs="+", help="Refetch canonical PDFs for one or more existing papers")
     p_pdf.add_argument("--all", action="store_true", help="Refetch canonical PDFs for all library papers")
-    p_pdf.add_argument("--out-dir", help="Directory for a new downloaded PDF (default: configured inbox)")
+    p_pdf.add_argument(
+        "--out-dir",
+        help="Directory to keep a new downloaded PDF (default: configured inbox; --ingest stages temporarily)",
+    )
     p_pdf.add_argument("--direct", action="store_true", help="Ignore proxy environment variables")
     p_pdf.add_argument("--force", action="store_true", help="Overwrite an existing PDF")
     p_pdf.add_argument("--ingest", action="store_true", help="Run the ingest pipeline after a new download")

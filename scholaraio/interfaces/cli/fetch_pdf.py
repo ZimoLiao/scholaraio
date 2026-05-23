@@ -48,6 +48,15 @@ def _print_result(result) -> None:
         _ui(f"Failed: {result.locator} ({result.message})")
 
 
+def _print_staged_ingest_result(result) -> None:
+    name = result.path.name if result.path is not None else result.locator
+    _ui(f"Staged PDF for ingest: {name} (temporary; use --out-dir to keep a copy)")
+    if result.pdf_url:
+        _ui(f"Source URL: {result.pdf_url}")
+    if result.bytes_downloaded:
+        _ui(f"Bytes: {result.bytes_downloaded}")
+
+
 def _validate_mode(args: argparse.Namespace) -> str:
     has_locator = bool((getattr(args, "locator", None) or "").strip())
     has_paper = bool(_paper_ids(args))
@@ -104,6 +113,7 @@ def _download_new_locator(args: argparse.Namespace, cfg) -> None:
     timeout = float(getattr(args, "timeout", 60.0))
 
     with ExitStack() as stack:
+        staged_for_ingest = ingest and not out_dir_arg
         if ingest and not out_dir_arg:
             out_dir = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="scholaraio_pdf_fetch_")))
         elif out_dir_arg:
@@ -117,7 +127,10 @@ def _download_new_locator(args: argparse.Namespace, cfg) -> None:
             _ui(f"PDF fetch failed: {exc}")
             sys.exit(1)
 
-        _print_result(result)
+        if staged_for_ingest:
+            _print_staged_ingest_result(result)
+        else:
+            _print_result(result)
         if ingest:
             if result.path is None:
                 _ui("PDF ingest failed: no PDF path was produced")
