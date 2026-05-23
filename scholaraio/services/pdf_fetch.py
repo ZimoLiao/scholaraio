@@ -86,7 +86,11 @@ def _safe_filename(text: str, *, default: str = "paper.pdf") -> str:
         raw = default
     if not raw.lower().endswith(".pdf"):
         raw += ".pdf"
-    return raw[:180]
+    stem = raw[:-4]
+    stem = stem[:176].rstrip(".-")
+    if not stem:
+        stem = "paper"
+    return f"{stem}.pdf"
 
 
 def _extract_content(tag: str) -> str:
@@ -150,12 +154,65 @@ def _locator_to_url(locator: str) -> str:
 
 def _valid_pdf_payload(path: Path, content_type: str) -> bool:
     try:
-        head = path.read_bytes()[:16].lstrip()
+        head = path.read_bytes()[:1024]
     except OSError:
         return False
-    if head.startswith(b"%PDF"):
-        return True
-    return content_type.split(";", 1)[0].strip().lower() in PDF_MIME_HINTS and head.startswith(b"%PDF")
+    return b"%PDF-" in head
+
+
+def _save_pdf_response(
+    response: requests.Response,
+    out_dir: Path,
+    *,
+    locator: str,
+    filename: str | None = None,
+    force: bool = False,
+    source: str,
+) -> PdfFetchResult:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    target = out_dir / (filename or _safe_filename(response.url or locator))
+    if target.exists() and not force:
+        return PdfFetchResult(
+            status="skipped",
+            locator=locator,
+            pdf_url=response.url,
+            path=target,
+            source=source,
+            message=f"PDF already exists: {target}",
+        )
+
+    content_type = response.headers.get("Content-Type", "")
+    tmp_path: Path | None = None
+    bytes_downloaded = 0
+    try:
+        with tempfile.NamedTemporaryFile(dir=out_dir, delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+            for chunk in response.iter_content(chunk_size=1024 * 128):
+                if not chunk:
+                    continue
+                bytes_downloaded += len(chunk)
+                tmp.write(chunk)
+
+        if not _valid_pdf_payload(tmp_path, content_type):
+            raise PdfFetchError(
+                f"Downloaded payload is not a PDF: {locator} ({content_type or 'unknown content type'})"
+            )
+
+        tmp_path.replace(target)
+    except Exception:
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
+        raise
+
+    return PdfFetchResult(
+        status="downloaded",
+        locator=locator,
+        pdf_url=response.url,
+        path=target,
+        source=source,
+        bytes_downloaded=bytes_downloaded,
+        content_type=content_type,
+    )
 
 
 def _download_pdf_url(
@@ -167,7 +224,6 @@ def _download_pdf_url(
     force: bool = False,
     source: str = "direct_pdf_url",
 ) -> PdfFetchResult:
-    out_dir.mkdir(parents=True, exist_ok=True)
     target = out_dir / (filename or _safe_filename(url))
     if target.exists() and not force:
         return PdfFetchResult(
@@ -179,33 +235,17 @@ def _download_pdf_url(
             message=f"PDF already exists: {target}",
         )
 
-    response = session.get(url, stream=True, allow_redirects=True)
-    content_type = response.headers.get("Content-Type", "")
-    response.raise_for_status()
-
-    with tempfile.NamedTemporaryFile(dir=out_dir, delete=False) as tmp:
-        tmp_path = Path(tmp.name)
-        bytes_downloaded = 0
-        for chunk in response.iter_content(chunk_size=1024 * 128):
-            if not chunk:
-                continue
-            bytes_downloaded += len(chunk)
-            tmp.write(chunk)
-
-    if not _valid_pdf_payload(tmp_path, content_type):
-        tmp_path.unlink(missing_ok=True)
-        raise PdfFetchError(f"Downloaded payload is not a PDF: {url} ({content_type or 'unknown content type'})")
-
-    tmp_path.replace(target)
-    return PdfFetchResult(
-        status="downloaded",
-        locator=url,
-        pdf_url=response.url,
-        path=target,
-        source=source,
-        bytes_downloaded=bytes_downloaded,
-        content_type=content_type,
-    )
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with session.get(url, stream=True, allow_redirects=True) as response:
+        response.raise_for_status()
+        return _save_pdf_response(
+            response,
+            out_dir,
+            locator=url,
+            filename=filename,
+            force=force,
+            source=source,
+        )
 
 
 def fetch_pdf(
@@ -223,28 +263,35 @@ def fetch_pdf(
     if _is_pdf_url(url):
         return _download_pdf_url(url, out_dir, session=session, filename=filename, force=force)
 
-    response = session.get(url, allow_redirects=True)
-    content_type = response.headers.get("Content-Type", "")
-    response.raise_for_status()
-    if content_type.split(";", 1)[0].strip().lower() in PDF_MIME_HINTS:
-        return _download_pdf_url(response.url, out_dir, session=session, filename=filename, force=force)
-
-    html = response.text
-    title = _extract_title(html)
-    inferred_name = filename or (_safe_filename(title) if title else None)
-    errors: list[str] = []
-    for pdf_url, source in _candidate_pdf_urls(html, response.url):
-        try:
-            return _download_pdf_url(
-                pdf_url,
+    with session.get(url, stream=True, allow_redirects=True) as response:
+        content_type = response.headers.get("Content-Type", "")
+        response.raise_for_status()
+        if content_type.split(";", 1)[0].strip().lower() in PDF_MIME_HINTS:
+            return _save_pdf_response(
+                response,
                 out_dir,
-                session=session,
-                filename=inferred_name,
+                locator=locator,
+                filename=filename,
                 force=force,
-                source=source,
+                source="direct_pdf_response",
             )
-        except (requests.RequestException, PdfFetchError) as exc:
-            errors.append(f"{pdf_url}: {exc}")
+
+        html = response.text
+        title = _extract_title(html)
+        inferred_name = filename or (_safe_filename(title) if title else None)
+        errors: list[str] = []
+        for pdf_url, source in _candidate_pdf_urls(html, response.url):
+            try:
+                return _download_pdf_url(
+                    pdf_url,
+                    out_dir,
+                    session=session,
+                    filename=inferred_name,
+                    force=force,
+                    source=source,
+                )
+            except (requests.RequestException, PdfFetchError) as exc:
+                errors.append(f"{pdf_url}: {exc}")
     detail = "; ".join(errors) if errors else "no PDF link found"
     raise PdfFetchError(f"Could not fetch PDF for {locator}: {detail}")
 

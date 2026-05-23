@@ -19,8 +19,10 @@ PDF_BYTES = b"%PDF-1.4\n% scholar aio test pdf\n1 0 obj\n<<>>\nendobj\n%%EOF\n"
 
 class _RouteHandler(BaseHTTPRequestHandler):
     routes: ClassVar[dict[str, tuple[int, str, bytes]]] = {}
+    request_counts: ClassVar[dict[str, int]] = {}
 
     def do_GET(self) -> None:
+        self.request_counts[self.path] = self.request_counts.get(self.path, 0) + 1
         status, content_type, body = self.routes.get(
             self.path,
             (404, "text/plain", b"missing"),
@@ -36,11 +38,14 @@ class _RouteHandler(BaseHTTPRequestHandler):
 
 
 @contextmanager
-def _http_server(routes: dict[str, tuple[int, str, bytes]]) -> Iterator[str]:
+def _http_server(
+    routes: dict[str, tuple[int, str, bytes]], request_counts: dict[str, int] | None = None
+) -> Iterator[str]:
     class Handler(_RouteHandler):
         pass
 
     Handler.routes = routes
+    Handler.request_counts = request_counts if request_counts is not None else {}
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -116,6 +121,57 @@ def test_direct_fetch_ignores_proxy_environment_with_real_http(tmp_path: Path) -
 
     assert result.path is not None
     assert result.path.read_bytes().startswith(b"%PDF")
+
+
+def test_fetch_pdf_saves_initial_pdf_response_without_second_get(tmp_path: Path) -> None:
+    from scholaraio.services.pdf_fetch import fetch_pdf
+
+    request_counts: dict[str, int] = {}
+    with _http_server(
+        {"/signed-download": (200, "application/pdf", PDF_BYTES)},
+        request_counts=request_counts,
+    ) as base_url:
+        result = fetch_pdf(f"{base_url}/signed-download", tmp_path, direct=True)
+
+    assert result.path is not None
+    assert result.path.read_bytes() == PDF_BYTES
+    assert request_counts["/signed-download"] == 1
+
+
+def test_fetch_pdf_preserves_pdf_suffix_after_long_title_truncation(tmp_path: Path) -> None:
+    from scholaraio.services.pdf_fetch import fetch_pdf
+
+    long_title = "Long Publisher Title " + ("with many words " * 20)
+    routes: dict[str, tuple[int, str, bytes]] = {}
+    with _http_server(routes) as base_url:
+        routes["/article"] = (
+            200,
+            "text/html; charset=utf-8",
+            (
+                "<html><head>"
+                f'<meta name="citation_title" content="{long_title}">'
+                f'<meta name="citation_pdf_url" content="{base_url}/paper.pdf">'
+                "</head></html>"
+            ).encode(),
+        )
+        routes["/paper.pdf"] = (200, "application/pdf", PDF_BYTES)
+
+        result = fetch_pdf(f"{base_url}/article", tmp_path, direct=True)
+
+    assert result.path is not None
+    assert result.path.name.endswith(".pdf")
+    assert len(result.path.name) <= 180
+
+
+def test_fetch_pdf_accepts_pdf_header_within_first_kilobyte(tmp_path: Path) -> None:
+    from scholaraio.services.pdf_fetch import fetch_pdf
+
+    prefixed_pdf = b"\x00publisher-banner\n" + PDF_BYTES
+    with _http_server({"/paper.pdf": (200, "application/pdf", prefixed_pdf)}) as base_url:
+        result = fetch_pdf(f"{base_url}/paper.pdf", tmp_path, direct=True)
+
+    assert result.path is not None
+    assert result.path.read_bytes() == prefixed_pdf
 
 
 def test_refetch_existing_paper_uses_source_url_and_replaces_canonical_pdf(tmp_path: Path) -> None:
