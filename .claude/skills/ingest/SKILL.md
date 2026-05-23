@@ -124,6 +124,9 @@ scholaraio proceedings apply-clean <proceeding_dir> <clean_plan.json>
 用户说："把这个网页/在线 PDF 直接收进库里"
 → 不要先让用户手动放 inbox，优先使用 `scholaraio ingest-link <url>`（它会通过 `qt-web-extractor` 抓取渲染后的网页内容或在线 PDF）
 
+用户说："我在校园网/机构网，帮我从 DOI 或出版社页面下载正版论文 PDF"
+→ 使用 `scholaraio fetch-pdf <doi-or-url> --direct`；如果要马上入库，加 `--ingest`。这个命令只利用用户当前合法访问上下文，不做访问绕过，也不需要 Paper Fetch Skill 或 PDF 转换功能。
+
 用户说："把新论文全部处理完，包括提取目录和结论"
 → 执行 `pipeline full`
 

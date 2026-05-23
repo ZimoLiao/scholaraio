@@ -1391,6 +1391,7 @@ def test_internal_cli_wiring_commands_live_in_interface_namespace() -> None:
         ("cmd_patent_fetch", "scholaraio.interfaces.cli.patent"),
         ("cmd_patent_search", "scholaraio.interfaces.cli.patent"),
         ("cmd_attach_pdf", "scholaraio.interfaces.cli.attach_pdf"),
+        ("cmd_fetch_pdf", "scholaraio.interfaces.cli.fetch_pdf"),
     ):
         _assert_compat_binding(binding_name, module_name)
 

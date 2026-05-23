@@ -40,6 +40,7 @@ def _build_parser() -> argparse.ArgumentParser:
     cmd_import_endnote = cli_mod.cmd_import_endnote
     cmd_import_zotero = cli_mod.cmd_import_zotero
     cmd_attach_pdf = cli_mod.cmd_attach_pdf
+    cmd_fetch_pdf = cli_mod.cmd_fetch_pdf
     cmd_ingest_link = cli_mod.cmd_ingest_link
     cmd_arxiv_search = cli_mod.cmd_arxiv_search
     cmd_arxiv_fetch = cli_mod.cmd_arxiv_fetch
@@ -433,6 +434,21 @@ def _build_parser() -> argparse.ArgumentParser:
     p_ap.add_argument("pdf_path", help="PDF file path")
     p_ap.add_argument("--dry-run", action="store_true", help="Preview planned actions without running them")
     p_ap.add_argument("--force", action="store_true", help="Replace an existing canonical PDF before conversion")
+
+    # --- fetch-pdf ---
+    p_pdf = sub.add_parser(
+        "fetch-pdf",
+        help="Download publisher PDFs through the current legal access context",
+    )
+    p_pdf.set_defaults(func=cmd_fetch_pdf)
+    p_pdf.add_argument("locator", nargs="?", help="DOI, landing page URL, direct PDF URL, or title")
+    p_pdf.add_argument("--paper", nargs="+", help="Refetch canonical PDFs for one or more existing papers")
+    p_pdf.add_argument("--all", action="store_true", help="Refetch canonical PDFs for all library papers")
+    p_pdf.add_argument("--out-dir", help="Directory for a new downloaded PDF (default: configured inbox)")
+    p_pdf.add_argument("--direct", action="store_true", help="Ignore proxy environment variables")
+    p_pdf.add_argument("--force", action="store_true", help="Overwrite an existing PDF")
+    p_pdf.add_argument("--ingest", action="store_true", help="Run the ingest pipeline after a new download")
+    p_pdf.add_argument("--timeout", type=float, default=60.0, help="Network timeout in seconds (default: 60)")
 
     # --- citation-check ---
     p_cc = sub.add_parser("citation-check", help="Verify whether citations in text exist in the local library")

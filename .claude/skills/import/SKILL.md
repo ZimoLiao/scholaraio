@@ -4,7 +4,7 @@ description: Use when the user wants to import papers from Endnote XML/RIS, Zote
 ---
 # 导入外部文献管理工具数据 / 补充 PDF
 
-支持从 Endnote / Zotero 批量导入，或为已入库论文单独补充 PDF（`attach-pdf`）。
+支持从 Endnote / Zotero 批量导入，或为已入库论文补充/重拉 PDF（`attach-pdf`、`fetch-pdf`）。
 
 ## Endnote 导入
 
@@ -81,11 +81,34 @@ zotero:
 
 ## 补充 PDF（单篇）
 
+已有本地 PDF 文件时：
+
 ```bash
 scholaraio attach-pdf <paper-id> <path/to/paper.pdf> [--force]
 ```
 
 自动把原始 PDF 保存到论文目录中（与 `paper.md` 同级，使用论文目录同名 stem），调用 MinerU 转换 PDF → markdown，补全缺失的 abstract，增量更新 embed + index。若目标目录已有 canonical PDF，默认拒绝覆盖；确认要替换时使用 `--force`。
+
+当前网络环境有正版访问权限、希望从出版社页面或 DOI 拉取 PDF 时：
+
+```bash
+# 拉取新论文 PDF 到 configured inbox；校园网直连时加 --direct 可绕过代理环境变量
+scholaraio fetch-pdf 10.xxxx/example --direct
+
+# 拉取后立刻走普通论文入库流程
+scholaraio fetch-pdf 10.xxxx/example --direct --ingest
+
+# 为已入库单篇论文重新拉取 canonical PDF；已有 PDF 时需要 --force
+scholaraio fetch-pdf --paper <paper-id> --direct --force
+
+# 为指定多篇论文批量重新拉取 PDF
+scholaraio fetch-pdf --paper <paper-id-1> <paper-id-2> --direct --force
+
+# 批量为全库论文重新拉取 PDF
+scholaraio fetch-pdf --all --direct --force
+```
+
+`fetch-pdf` 只做 PDF 获取，不做访问绕过；能否下载取决于用户当前网络、机构权限和 publisher 返回的 PDF 链接。它会优先使用 `source_url`，否则使用 DOI。重拉已有论文不会自动重新转换 `paper.md`。
 
 ## 批量补转 PDF（已入库论文）
 
