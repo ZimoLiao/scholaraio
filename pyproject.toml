@@ -28,7 +28,7 @@ dependencies = [
     "pyyaml>=6.0",
     "defusedxml>=0.7",
     "beautifulsoup4>=4.12",
-    "mineru-open-api>=0.2.2",
+    "mineru-open-api>=0.5.9",
 ]
 
 [project.urls]
