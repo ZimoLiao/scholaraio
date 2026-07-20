@@ -2,7 +2,31 @@
 
 from __future__ import annotations
 
+import sys
+
 from scholaraio.core.log import ui as _default_ui
+
+
+def _ensure_utf8_stdout() -> None:
+    """Reconfigure stdout/stderr to UTF-8 on Windows cp1252 consoles.
+
+    The logging StreamHandler writes to sys.stdout using its current encoding.
+    On Western-European Windows the default is cp1252, which cannot encode CJK
+    characters or many Unicode symbols used in setup check output.  Calling
+    reconfigure() here — before the root logger is created — makes every
+    subsequent handler.emit() safe for the full Unicode range.
+
+    reconfigure() is available on Python 3.7+ TextIOWrapper objects (the
+    normal sys.stdout/stderr).  We guard with hasattr so the call is a no-op
+    on streams that don't support it (e.g. redirected pipes with a custom
+    wrapper).
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
 
 
 def _ui(message: str = "") -> None:
@@ -15,6 +39,8 @@ def _ui(message: str = "") -> None:
 
 
 def main() -> None:
+    _ensure_utf8_stdout()
+
     from scholaraio.interfaces.cli import compat as cli_mod
 
     parser = cli_mod._build_parser()
