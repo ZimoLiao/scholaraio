@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Zotero linked-file attachments** ([#137](https://github.com/ZimoLiao/scholaraio/issues/137)): `import-zotero --local` now resolves attachments stored with Zotero's `attachments:` prefix against the profile's linked attachment base directory (`extensions.zotero.baseAttachmentPath`), instead of silently importing those records as metadata only. Libraries that keep PDFs outside Zotero's own `storage/` directory now import their PDFs and generate `paper.md` as expected.
+
 ## [2.0.0] — 2026-08-17
 
 ScholarAIO 2.0.0 is the first stable release in the 2.x line. It includes all
