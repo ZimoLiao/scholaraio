@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 import sqlite3
+from functools import lru_cache
 from pathlib import Path
 
 from scholaraio.core.log import ui
@@ -340,6 +341,47 @@ def parse_zotero_local(
         conn.close()
 
 
+_PREFS_BASE_PATH_RE = re.compile(
+    r'user_pref\(\s*"extensions\.zotero\.baseAttachmentPath"\s*,\s*"((?:[^"\\]|\\.)*)"\s*\)'
+)
+
+
+@lru_cache(maxsize=8)
+def _base_attachment_path(home: Path | None = None) -> Path | None:
+    """读取 Zotero 的"链接附件基准目录"（linked attachment base directory）。
+
+    Zotero 把 linked-file 附件的路径存成 ``attachments:<相对路径>``，需要配合本机
+    profile 里的 ``extensions.zotero.baseAttachmentPath`` 才能还原成绝对路径。
+    该设置只存在于 ``prefs.js``，不在 ``zotero.sqlite`` 里。
+
+    Args:
+        home: 用户主目录；为 ``None`` 时使用 ``Path.home()``（测试可显式注入）。
+
+    Returns:
+        基准目录；未配置或 profile 不存在时返回 ``None``。
+    """
+    base_home = home or Path.home()
+    roots = [
+        base_home / "Library" / "Application Support" / "Zotero" / "Profiles",  # macOS
+        base_home / ".zotero" / "zotero",  # Linux
+        base_home / "AppData" / "Roaming" / "Zotero" / "Zotero" / "Profiles",  # Windows
+    ]
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for prefs in sorted(root.glob("*/prefs.js")):
+            try:
+                text = prefs.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            m = _PREFS_BASE_PATH_RE.search(text)
+            if m:
+                base = Path(m.group(1).encode().decode("unicode_escape")).expanduser()
+                if base.is_dir():
+                    return base
+    return None
+
+
 def _find_local_pdf(conn: sqlite3.Connection, parent_id: int, storage_dir: Path) -> Path | None:
     """Find PDF attachment for a given item in local Zotero storage."""
     rows = conn.execute(
@@ -360,6 +402,13 @@ def _find_local_pdf(conn: sqlite3.Connection, parent_id: int, storage_dir: Path)
             pdf_path = storage_dir / att_key / filename
             if pdf_path.exists():
                 return pdf_path
+        elif raw_path.startswith("attachments:"):
+            # Linked file relative to Zotero's linked attachment base directory
+            base = _base_attachment_path()
+            if base is not None:
+                pdf_path = base / raw_path[len("attachments:") :]
+                if pdf_path.exists():
+                    return pdf_path
         elif raw_path:
             # Absolute or relative linked file
             p = Path(raw_path)
