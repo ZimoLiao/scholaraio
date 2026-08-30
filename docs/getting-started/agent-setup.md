@@ -26,7 +26,7 @@ pip install -e ".[full]"
 scholaraio setup
 ```
 
-`scholaraio setup check` is the companion diagnostic command. It reports both the core setup state and optional advanced items such as Semantic Scholar / Zotero API keys and Paper2Any sidecar readiness. Current setup guidance prefers MinerU first whenever a MinerU path is available.
+`scholaraio setup check` is the companion diagnostic command. It reports both the core setup state and optional advanced items such as Semantic Scholar / Zotero API keys. Current setup guidance prefers MinerU first whenever a MinerU path is available.
 
 Then start your agent in the repository root:
 
@@ -41,11 +41,6 @@ Then start your agent in the repository root:
 | GitHub Copilot | Reads `.github/copilot-instructions.md` |
 
 This mode is best when you want the full project context, not just the ScholarAIO skills.
-
-The project checkout does not register optional MCP servers by default. It does
-not register Paper2Any; add that sidecar explicitly only for a Paper2Any request
-or fixed-corpus evaluation. See [Paper2Any Integration](../guide/paper2any-integration.md)
-for explicit sidecar registration.
 
 The entry docs are intentionally layered:
 

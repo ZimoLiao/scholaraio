@@ -27,8 +27,6 @@ multiple implementation units.
   package.
 - **P2:** Move `mineru-open-api` out of base and validate supported extras from
   clean wheels with `pip check` and smoke tests.
-- **P2:** Apply the dependency admission gate and run a fixed-corpus Paper2Any
-  native-vs-extension bakeoff before promoting any of its workflows.
 - See `docs/internal/references/code-and-dependency-technical-debt-audit.md` for
   evidence, dependency decisions, and the recommended sequence.
 - Add generated CLI or schema references under `docs/generated/` once the
@@ -37,6 +35,9 @@ multiple implementation units.
 
 ## Closed
 
+- 2026-08-30: Removed the Paper2Any CLI, MCP sidecar, config, setup, provider,
+  skill, docs, and test surface after it failed to establish unique value over
+  agent-native workflows; the local isolated runtime was recoverably removed.
 - 2026-07-21: Removed the runtime-unowned `mermaid-py` and
   `cli-anything-inkscape` requirements while preserving the empty `draw` extra
   as an installation-compatibility marker.

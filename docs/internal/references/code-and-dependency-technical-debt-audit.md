@@ -11,11 +11,11 @@ Toolref legacy snapshot and replacing its differential-oracle coverage with
 explicit contract tests. The baseline counts and remaining evidence below stay
 pinned to the audited repository revision unless a finding is marked resolved.
 
-Update note (2026-08-30): the next-major external-webtools cleanup resolves the
-qt-web-extractor and GUILessBingSearch portion of TD-10 by removing their MCP,
-skill, CLI, config, setup, provider, and validation surfaces. The earlier
-keep-optional recommendation below is superseded; historical validation reports
-remain pinned to the versions they evaluated.
+Update note (2026-08-30): the next-major external-integration cleanup resolves
+the qt-web-extractor, GUILessBingSearch, and Paper2Any portion of TD-10 by
+removing their MCP, skill, CLI, config, setup, provider, and validation
+surfaces. Earlier keep/quarantine recommendations below are superseded;
+historical validation reports remain pinned to the versions they evaluated.
 
 ## 1. Executive Summary
 
@@ -51,9 +51,10 @@ The dependency conclusion is equally important:
 4. `mermaid-py` and `cli-anything-inkscape` do not currently have a runtime import
    path and should not be in the published `draw`/`full` dependency surface
    without a measured workflow that needs them.
-5. Paper2Any should remain a quarantined, separately installed extension until a
-   native-vs-external quality bakeoff proves unique value. It should not be a
-   default prerequisite or an always-on integration surface.
+5. Paper2Any failed the admission gate: no fixed-corpus evidence established
+   unique value over agent-native workflows, while the adapter owned a large
+   CLI/config/setup/MCP surface and a multi-gigabyte isolated runtime. Remove it
+   in the next major generation.
 
 ## 2. Scope and Method
 
@@ -401,9 +402,9 @@ import/CLI smoke. Split provider-specific conveniences such as `modelscope` and
 
 **Resolution (2026-08-30)**
 
-Resolved for the external webtools surface in the next-major cleanup. Routine
-web access belongs to the active agent, while reviewable content can enter the
-normal document inbox. Paper2Any remains separately isolated and evidence-gated.
+Resolved for the external webtools and Paper2Any surfaces in the next-major
+cleanup. Routine web access and interactive artifact creation belong to the
+active agent, while reviewable content can enter the normal document inbox.
 
 **Evidence**
 
@@ -443,9 +444,9 @@ Adopt the admission gate in section 6. In particular:
 - remove `qt-web-extractor` from ScholarAIO after it failed to demonstrate enough
   recurring academic value to justify its MCP, skill, CLI, config, setup, and
   provider maintenance surface;
-- keep Paper2Any isolated from the Python base/full extras and remove any
-  implication that it is required; run a fixed-corpus bakeoff before promoting
-  individual capabilities;
+- remove Paper2Any's CLI/config/setup/MCP/skill surface after it failed to
+  produce the fixed-corpus evidence required for promotion; any future proposal
+  must start again as an external, user-managed evaluation;
 - synchronize the integration audit whenever an MCP entry, setup diagnostic,
   skill, or provider is added or materially changed.
 
@@ -470,7 +471,7 @@ belongs in the default package.
 | `curl-cffi` | **Keep narrow optional fallback** | It supports a specific DOI/Cloudflare recovery path. Treat it as a provider fallback, not a general HTTP replacement. |
 | `qt-web-extractor` | **Remove in next major** | Its rendered/batch path is useful in isolation, but did not justify a permanent ScholarAIO surface over host-native reading plus the normal document inbox. Keep it available only as a user-managed external tool. |
 | GUILessBingSearch adapter | **Deprecate/remove; do not reintroduce** | Host-native source-backed web search offers the better agent workflow. Retain only a time-bounded compatibility path if known Python callers still exist. |
-| Paper2Any | **Quarantine and benchmark** | Do not vendor or add to base/full. Promote only capabilities that beat native ScholarAIO + Codex on fixed acceptance criteria, especially editable/layout-preserving output. |
+| Paper2Any | **Remove in next major** | Its broad overlapping workflow claims never gained fixed-corpus evidence sufficient to justify the CLI/config/setup/MCP/skill surface or multi-gigabyte isolated runtime. A future proposal must re-enter through the admission gate as a user-managed evaluation. |
 | OpenAlex, Crossref, Semantic Scholar, arXiv, USPTO, Zotero APIs | **Keep provider adapters** | They provide structured, attributable identifiers and metadata. Native web search may help discovery but should not replace authoritative data contracts. |
 | OpenAI/Anthropic/Google SDKs or a multi-provider SDK | **Do not add yet** | Current HTTP adapters cover the narrow batch LLM contract. First split transport from metrics and measure missing protocol features or maintenance cost. |
 | Scientific CLIs such as GROMACS/LAMMPS/OpenFOAM | **Keep external and skill-mediated** | Codex can orchestrate and explain them but cannot substitute for the numerical executables or their validated results. Do not put them in Python extras. |
@@ -539,9 +540,8 @@ The default decision should be:
 
 ### Integration governance
 
-12. Run a fixed-corpus Paper2Any comparison covering at least editable diagram,
-    layout-preserving PDF-to-PPT, poster, and rebuttal paths. Compare artifact
-    editability, factual grounding, latency, setup burden, and failure behavior.
+12. Remove the unevidenced Paper2Any adapter and its isolated local runtime;
+    do not preserve it as a built-in benchmark harness.
 13. Update the third-party evidence matrix at the same time as MCP/config/skill
     changes, and require a live canary before labeling an integration `good`.
 

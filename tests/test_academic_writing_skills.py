@@ -92,7 +92,6 @@ def test_clawhub_registers_new_writing_skills() -> None:
 
 def test_common_agent_workflows_use_current_agent_native_capabilities() -> None:
     native_first_skills = ("academic-writing", "paper-guided-reading", "draw", "document")
-    shared_skills = (*native_first_skills, "paper2any")
 
     for skill_name in native_first_skills:
         content = _read(SKILLS_DIR / skill_name / "SKILL.md")
@@ -100,19 +99,8 @@ def test_common_agent_workflows_use_current_agent_native_capabilities() -> None:
         assert "当前 Agent 原生能力优先" in content, f"{skill_name} must declare the native-first contract"
         assert "实际" in content and "能力" in content, f"{skill_name} must gate routing on available capabilities"
         assert "不按 Agent 品牌路由" in content, f"{skill_name} must route by capability, not host identity"
-
-    for skill_name in shared_skills:
-        content = _read(SKILLS_DIR / skill_name / "SKILL.md")
-
         for host_name in ("Codex", "Claude Code", "OpenClaw"):
             assert host_name not in content, f"{skill_name} must not default-route through {host_name}"
-
-
-def test_paper2any_stays_an_isolated_benchmark_gated_extension() -> None:
-    content = _read(SKILLS_DIR / "paper2any" / "SKILL.md")
-
-    assert "isolated extension" in content
-    assert "fixed-corpus" in content
 
 
 def test_document_skill_uses_progressive_disclosure_for_format_details() -> None:

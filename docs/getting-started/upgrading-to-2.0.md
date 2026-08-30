@@ -95,8 +95,11 @@ files until migration verification passes. See [Upgrading To
 - Legacy root-level Python facade modules and implicit legacy runtime-root
   detection remain removed. Use canonical package namespaces and the explicit
   migration workflow.
-- Paper2Any and other large third-party workflows remain optional sidecars; they
-  are not installed or required by the default ScholarAIO runtime.
+- The next-major breaking cleanup also removes the Paper2Any CLI, sidecar,
+  configuration, setup diagnostics, and skill. Use the active agent's native
+  document, diagram, poster, and presentation workflows instead. Existing
+  external checkouts and generated artifacts are not part of the 2.x runtime
+  data contract.
 
 ## 2.x Compatibility Promise
 

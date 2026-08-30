@@ -192,7 +192,6 @@ def test_setup_check_english_output_is_cp1252_safe(tmp_path, monkeypatch):
     monkeypatch.setattr("scholaraio.services.setup.shutil.which", lambda _command: None)
     monkeypatch.setattr("scholaraio.services.setup.check_mineru_server", lambda _endpoint: False)
     monkeypatch.setattr("scholaraio.services.setup._probe_url", lambda _url, timeout=2: False)
-    monkeypatch.setattr("scholaraio.services.setup.list_paper2any_tools", lambda **_kwargs: [])
     monkeypatch.setattr(cfg, "resolved_api_key", lambda: "")
     monkeypatch.setattr(cfg, "resolved_mineru_api_key", lambda: "")
     monkeypatch.setattr(cfg, "resolved_s2_api_key", lambda: "")
@@ -236,51 +235,10 @@ def test_run_check_includes_optional_api_configuration_statuses(monkeypatch):
     result_map = {item.label: item for item in results}
     assert "Semantic Scholar API key" in result_map
     assert "Zotero API key" in result_map
-    assert "Paper2Any" in result_map
     assert result_map["Semantic Scholar API key"].ok is True
     assert result_map["Zotero API key"].ok is True
-    assert result_map["Paper2Any"].ok is True
     assert "可选" in result_map["Semantic Scholar API key"].detail
     assert "可选" in result_map["Zotero API key"].detail
-    assert "OpenDCAI/Paper2Any" in result_map["Paper2Any"].detail
-
-
-def test_run_check_reports_paper2any_sidecar_reachability(monkeypatch):
-    cfg = Config()
-    cfg.paper2any.mcp_url = "http://remote.example:8770/mcp"
-    monkeypatch.setattr("scholaraio.services.setup._check_mineru", lambda *_: (True, "mineru ok"))
-    monkeypatch.setattr("scholaraio.services.setup._check_docling", lambda *_: (True, "docling ok"))
-    monkeypatch.setattr("scholaraio.services.setup._check_huggingface", lambda *_: (True, "hf ok"))
-    monkeypatch.setattr("scholaraio.services.setup.recommend_pdf_parser", lambda *args: ("MinerU", "both reachable"))
-    monkeypatch.setattr(
-        "scholaraio.services.setup.list_paper2any_tools", lambda *_args, **_kwargs: [{"name": "paper2any_status"}]
-    )
-
-    results = run_check(cfg, "zh")
-
-    result_map = {item.label: item for item in results}
-    assert "MCP sidecar 可访问" in result_map["Paper2Any"].detail
-    assert "http://remote.example:8770/mcp" in result_map["Paper2Any"].detail
-    assert "1 tools" in result_map["Paper2Any"].detail
-
-
-def test_run_check_reports_paper2any_env_mcp_url_precedence(monkeypatch):
-    cfg = Config()
-    cfg.paper2any.mcp_url = "http://config.example:8770/mcp"
-    monkeypatch.setenv("PAPER2ANY_MCP_URL", "http://env.example:8770/mcp")
-    monkeypatch.setattr("scholaraio.services.setup._check_mineru", lambda *_: (True, "mineru ok"))
-    monkeypatch.setattr("scholaraio.services.setup._check_docling", lambda *_: (True, "docling ok"))
-    monkeypatch.setattr("scholaraio.services.setup._check_huggingface", lambda *_: (True, "hf ok"))
-    monkeypatch.setattr("scholaraio.services.setup.recommend_pdf_parser", lambda *args: ("MinerU", "both reachable"))
-    monkeypatch.setattr(
-        "scholaraio.services.setup.list_paper2any_tools", lambda *_args, **_kwargs: [{"name": "paper2any_status"}]
-    )
-
-    results = run_check(cfg, "en")
-
-    detail = {item.label: item for item in results}["Paper2Any"].detail
-    assert "MCP sidecar reachable @ http://env.example:8770/mcp" in detail
-    assert "http://config.example:8770/mcp" not in detail
 
 
 def test_wizard_config_template_excludes_external_webtools(tmp_path):
@@ -289,8 +247,7 @@ def test_wizard_config_template_excludes_external_webtools(tmp_path):
     text = (tmp_path / "config.yaml").read_text(encoding="utf-8")
     assert "websearch:" not in text
     assert "webextract:" not in text
-    assert "paper2any:" in text
-    assert "mcp_url: http://127.0.0.1:8770/mcp" in text
+    assert "paper2any:" not in text
 
 
 def test_run_check_prefers_mineru_recommendation_when_cli_exists_without_token(monkeypatch):

@@ -29,7 +29,6 @@ Status is intentionally conservative:
 | :--- | :--- | :--- | :--- | :--- |
 | **MinerU Local API** | Parsing | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
 | **MinerU Cloud CLI** | Parsing | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
-| **Paper2Any MCP Sidecar** | Parsing/MCP | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
 | **Docling Fallback** | Parsing | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
 | **PyMuPDF Fallback** | Parsing | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
 | **arXiv Search (Atom API)** | Discovery | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
@@ -59,11 +58,12 @@ Status is intentionally conservative:
 
 ## 2. Removed Surfaces
 
-The next-major breaking cleanup removes qt-web-extractor and the dormant
-GUILessBingSearch compatibility adapter after they failed the current admission
-gate. ScholarAIO no longer owns their MCP registration, skills, CLI commands,
-configuration, setup diagnostics, providers, or live canaries. Past validation
-reports remain unchanged because they describe released historical versions.
+The next-major breaking cleanup removes qt-web-extractor, the dormant
+GUILessBingSearch compatibility adapter, and Paper2Any after they failed the
+current admission gate. ScholarAIO no longer owns their MCP registration,
+skills, CLI commands, configuration, setup diagnostics, providers, or live
+canaries. Past validation reports remain unchanged because they describe
+released historical versions.
 
 ## 3. Not-Yet-Reviewed Inventory
 

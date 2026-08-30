@@ -23,7 +23,6 @@ import yaml
 
 from scholaraio.core.config import Config, load_config
 from scholaraio.providers.mineru import check_server as check_mineru_server
-from scholaraio.providers.paper2any import Paper2AnyError, list_paper2any_tools, resolve_paper2any_mcp_url
 
 # ============================================================================
 #  Bilingual strings
@@ -51,7 +50,6 @@ _S: dict[str, dict[Lang, str]] = {
     "contact_email": {"en": "Contact email", "zh": "联系邮箱"},
     "s2_key": {"en": "Semantic Scholar API key", "zh": "Semantic Scholar API key"},
     "zotero_key": {"en": "Zotero API key", "zh": "Zotero API key"},
-    "paper2any": {"en": "Paper2Any", "zh": "Paper2Any"},
     "directories": {"en": "Directories", "zh": "目录结构"},
     "papers_count": {"en": "Papers", "zh": "论文数量"},
     "optional_s2_set": {
@@ -549,8 +547,6 @@ def run_check(cfg: Config | None = None, lang: Lang = "zh") -> list[CheckResult]
             )
         )
 
-    results.append(CheckResult(t("paper2any", lang), True, _paper2any_detail(cfg, lang)))
-
     # Directories
     dirs_to_check = [
         cfg.papers_dir,
@@ -578,47 +574,6 @@ def run_check(cfg: Config | None = None, lang: Lang = "zh") -> list[CheckResult]
     results.append(CheckResult(t("papers_count", lang), True, str(count)))
 
     return results
-
-
-def _paper2any_detail(cfg: Config, lang: Lang) -> str:
-    root = cfg.paper2any_root
-    mcp_url = resolve_paper2any_mcp_url(cfg)
-    try:
-        tool_count = len(list_paper2any_tools(cfg=cfg, timeout=1))
-        sidecar_detail = (
-            f"MCP sidecar 可访问 @ {mcp_url}; {tool_count} tools"
-            if lang == "zh"
-            else (f"MCP sidecar reachable @ {mcp_url}; {tool_count} tools")
-        )
-    except Paper2AnyError:
-        sidecar_detail = (
-            f"MCP sidecar 未运行/不可达 @ {mcp_url}"
-            if lang == "zh"
-            else (f"MCP sidecar not running/unreachable @ {mcp_url}")
-        )
-
-    if root.exists():
-        root_detail = (
-            f"OpenDCAI/Paper2Any checkout found at {root}"
-            if lang == "en"
-            else (f"OpenDCAI/Paper2Any checkout 已找到: {root}")
-        )
-    else:
-        root_detail = (
-            f"checkout not found at {root}; run `scholaraio paper2any setup` or place OpenDCAI/Paper2Any there"
-            if lang == "en"
-            else f"checkout 未找到: {root}; 运行 `scholaraio paper2any setup` 或把 OpenDCAI/Paper2Any 放到这里"
-        )
-
-    if lang == "zh":
-        return (
-            f"可选: {root_detail}; {sidecar_detail}; "
-            "启动: `scholaraio paper2any mcp-serve`; backend 可选: `scholaraio paper2any backend-serve`"
-        )
-    return (
-        f"optional: {root_detail}; {sidecar_detail}; "
-        "start: `scholaraio paper2any mcp-serve`; optional backend: `scholaraio paper2any backend-serve`"
-    )
 
 
 def _check_mineru(cfg: Config, lang: Lang) -> tuple[bool, str]:
@@ -1165,16 +1120,6 @@ ingest:
   mineru_enable_formula: true         # only effective for pipeline / vlm
   mineru_enable_table: true           # only effective for pipeline / vlm
   abstract_llm_mode: verify # off | fallback | verify
-
-# Paper2Any external extension. ScholarAIO talks to its lightweight MCP sidecar;
-# the OpenDCAI/Paper2Any checkout stays outside tracked source.
-paper2any:
-  transport: mcp
-  mcp_url: http://127.0.0.1:8770/mcp
-  root: null           # default: data/runtime/extensions/paper2any/Paper2Any
-  base_url: http://127.0.0.1:8000 # optional upstream Paper2Any FastAPI backend
-  api_key: null        # optional MCP bearer token -> config.local.yaml
-  backend_api_key: null # required for upstream /api routes -> config.local.yaml
 
 # Semantic embeddings (Qwen3-Embedding-0.6B, ~1.2 GB, auto-downloaded)
 embed:

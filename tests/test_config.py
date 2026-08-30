@@ -52,8 +52,6 @@ class TestBuildConfig:
         assert cfg.llm.backend == "openai-compat"
         assert cfg.paths.papers_dir == "data/libraries/papers"
         assert cfg.search.top_k == 20
-        assert cfg.paper2any.root == ""
-        assert cfg.paper2any.mcp_url == ""
 
     def test_partial_override(self, tmp_path):
         data = {"llm": {"model": "gpt-4o", "timeout": 60}}
@@ -161,29 +159,10 @@ class TestBuildConfig:
         assert cfg.translate.chunk_size == 4000
         assert cfg.translate.concurrency == 20
 
-    def test_paper2any_section_is_loaded_without_dependency_surface(self, tmp_path):
-        cfg = _build_config(
-            {
-                "paper2any": {
-                    "root": "data/runtime/extensions/paper2any/Paper2Any",
-                    "transport": "mcp",
-                    "mcp_url": "http://127.0.0.1:8770/mcp",
-                    "base_url": "http://127.0.0.1:8000",
-                    "api_key": "sidecar-secret",
-                    "backend_api_key": "backend-secret",
-                }
-            },
-            tmp_path,
-        )
+    def test_removed_paper2any_section_is_ignored(self, tmp_path):
+        cfg = _build_config({"paper2any": {"mcp_url": "http://127.0.0.1:8770/mcp"}}, tmp_path)
 
-        assert cfg.paper2any.root == "data/runtime/extensions/paper2any/Paper2Any"
-        assert cfg.paper2any.transport == "mcp"
-        assert cfg.paper2any.mcp_url == "http://127.0.0.1:8770/mcp"
-        assert cfg.paper2any.base_url == "http://127.0.0.1:8000"
-        assert cfg.paper2any.api_key == "sidecar-secret"
-        assert cfg.paper2any.backend_api_key == "backend-secret"
-        assert not hasattr(cfg.paper2any, "requirements")
-        assert not hasattr(cfg.paper2any, "install_command")
+        assert not hasattr(cfg, "paper2any")
 
     def test_backup_defaults_are_exposed(self, tmp_path):
         cfg = _build_config({}, tmp_path)

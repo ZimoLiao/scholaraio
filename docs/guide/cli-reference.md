@@ -56,10 +56,6 @@ scholaraio top-cited
 
 ```text
 scholaraio pipeline [preset]
-scholaraio paper2any setup [--install-runtime]
-scholaraio paper2any mcp-serve
-scholaraio paper2any backend-serve
-scholaraio paper2any status|tools|call
 scholaraio patent-search <query> [--count N]
 scholaraio patent-fetch <publication-number-or-url>
 scholaraio enrich-toc
@@ -77,7 +73,6 @@ scholaraio fetch-pdf --all [--direct] [--force]
 - `fetch-pdf` downloads publisher PDFs through the current user network and access context. It does not bypass access controls; use `--direct` to ignore proxy environment variables such as Clash when the campus network itself has access.
 - `fetch-pdf --ingest` sends only the fetched PDF into the ingest pipeline. Without `--out-dir`, the PDF is staged temporarily and is not left in the configured inbox; use `--out-dir` to keep a separate downloaded copy. If `--out-dir` is supplied, the PDF is saved there but ingested through an isolated temporary single-file inbox, so unrelated PDFs in that directory are not processed.
 - Use the host agent's native web search and URL-reading tools for live discovery and web content. ScholarAIO does not expose a web discovery/extraction CLI or register a web MCP server.
-- `paper2any` starts and calls the lightweight MCP sidecar for an external OpenDCAI/Paper2Any checkout. Use it for real Paper2Any paper-to-figure, PPT, poster, video, citation, rebuttal, DrawIO, mindmap, PDF-to-PPT, image-to-PPT, and KB workflows without vendoring Paper2Any into ScholarAIO.
 - `patent-search` discovers patent candidates through USPTO PPUBS by default, with optional ODP API support.
 - `patent-fetch` downloads a patent PDF into the configured patent inbox for the normal patent ingest flow.
 - `refetch` refreshes citation counts, bibliographic metadata, and structured `references` for already ingested papers.

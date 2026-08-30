@@ -7,7 +7,7 @@ description: Use when the user wants to create or inspect DOCX, PPTX, or XLSX fi
 
 ## Capability Routing
 
-**当前 Agent 原生能力优先，但必须先做能力检查**：按最终交付物路由，不按 Agent 品牌路由。若当前会话实际提供内容写作、演示设计、图表或版式能力，就由当前使用的 Agent 原生能力先完成内容与视觉方案。只有用户需要可下载、可复现的 `DOCX/PPTX/XLSX` 文件时，才使用本 skill 的 Office API 和检查闭环；普通演示内容不得自动转交 Paper2Any。
+**当前 Agent 原生能力优先，但必须先做能力检查**：按最终交付物路由，不按 Agent 品牌路由。若当前会话实际提供内容写作、演示设计、图表或版式能力，就由当前使用的 Agent 原生能力先完成内容与视觉方案。只有用户需要可下载、可复现的 `DOCX/PPTX/XLSX` 文件时，才使用本 skill 的 Office API 和检查闭环。
 
 ## Output Contract
 
@@ -56,7 +56,6 @@ scholaraio document inspect workspace/reports/data.xlsx
 | 搜索或整理论文 | `/search`、`/workspace` 或写作 skill 先生成有来源的内容 |
 | 文献综述或论文章节 | `/literature-review` 或 `/paper-writing` 先完成内容，再封装 DOCX |
 | 普通演示稿 | 先完成故事线与逐页内容，再生成 PPTX |
-| 用户明确要求 Paper2Any | 转 `/paper2any`，保持其隔离运行时和 fixed-corpus 边界 |
 
 ## Quality Gates
 

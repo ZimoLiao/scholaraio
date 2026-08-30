@@ -15,6 +15,9 @@ plan only when implementation spans multiple resumable stages.
 
 ## Completed Plans
 
+- `docs/internal/exec-plans/completed/2026-08-30-remove-paper2any-plan.md`
+  records the next-major removal of the unevidenced Paper2Any adapter and its
+  local isolated runtime.
 - `docs/internal/exec-plans/completed/2026-08-30-remove-external-webtools-plan.md`
   records the next-major removal of qt-web-extractor and the dormant external
   web-search compatibility adapter.
