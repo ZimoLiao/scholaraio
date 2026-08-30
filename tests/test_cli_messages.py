@@ -340,69 +340,6 @@ class TestCliHelpLocalization:
         assert "tools" in actions
 
 
-class TestWebextractCli:
-    def test_cmd_webextract_exits_when_result_contains_error_without_text(self, monkeypatch):
-        import scholaraio.providers.webtools as webtools
-
-        messages: list[str] = []
-        monkeypatch.setattr(cli, "ui", messages.append)
-        monkeypatch.setattr(
-            webtools,
-            "extract_web",
-            lambda *args, **kwargs: {"title": "", "text": "", "error": "partial extraction failed"},
-        )
-
-        args = Namespace(url="https://example.com", pdf=False, full=False, max_chars=10)
-
-        with pytest.raises(SystemExit) as exc:
-            cli.cmd_webextract(args, SimpleNamespace())
-
-        assert exc.value.code == 1
-        assert any("Extraction failed: partial extraction failed" in message for message in messages)
-        assert all("Extraction succeeded" not in message for message in messages)
-
-    def test_cmd_webextract_truncates_long_text_by_default(self, monkeypatch, capsys):
-        import scholaraio.providers.webtools as webtools
-
-        messages: list[str] = []
-        monkeypatch.setattr(cli, "ui", messages.append)
-        monkeypatch.setattr(
-            webtools,
-            "extract_web",
-            lambda *args, **kwargs: {"title": "Page", "text": "abcdefghijklmnopqrstuvwxyz"},
-        )
-
-        args = Namespace(url="https://example.com", pdf=False, full=False, max_chars=10)
-        cli.cmd_webextract(args, SimpleNamespace())
-
-        captured = capsys.readouterr()
-
-        assert any("Extraction succeeded: Page" in message for message in messages)
-        assert any("Content is long" in message for message in messages)
-        assert "abcdefghij" in captured.out
-        assert "klmnopqrstuvwxyz" not in captured.out
-
-    def test_cmd_webextract_full_prints_complete_text(self, monkeypatch, capsys):
-        import scholaraio.providers.webtools as webtools
-
-        messages: list[str] = []
-        monkeypatch.setattr(cli, "ui", messages.append)
-        monkeypatch.setattr(
-            webtools,
-            "extract_web",
-            lambda *args, **kwargs: {"title": "Page", "text": "abcdefghijklmnopqrstuvwxyz"},
-        )
-
-        args = Namespace(url="https://example.com", pdf=False, full=True, max_chars=10)
-        cli.cmd_webextract(args, SimpleNamespace())
-
-        captured = capsys.readouterr()
-
-        assert any("Extraction succeeded: Page" in message for message in messages)
-        assert all("Truncated" not in message for message in messages)
-        assert "abcdefghijklmnopqrstuvwxyz" in captured.out
-
-
 class TestShowLayer4Headings:
     def test_translated_full_text_heading_uses_consistent_spacing(self, tmp_papers, monkeypatch):
         paper_dir = tmp_papers / "Smith-2023-Turbulence"

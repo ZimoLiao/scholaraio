@@ -42,21 +42,10 @@ Then start your agent in the repository root:
 
 This mode is best when you want the full project context, not just the ScholarAIO skills.
 
-The bundled `.mcp.json` registers only the optional rendered-extraction MCP
-server for hosts that can consume project-scoped MCP JSON. It intentionally
-does not register Paper2Any; add that sidecar explicitly only for a Paper2Any
-request or fixed-corpus evaluation. Codex currently uses its own MCP registry,
-so register the extractor explicitly only when URL ingestion needs rendered
-content that host-native reading cannot provide:
-
-```bash
-codex mcp add web-extractor --url http://127.0.0.1:8766/mcp
-```
-
-See [Webtools Integration](../guide/webtools-integration.md) for auth variants
-and non-Claude agent examples. See
-[Paper2Any Integration](../guide/paper2any-integration.md) for explicit sidecar
-registration.
+The project checkout does not register optional MCP servers by default. It does
+not register Paper2Any; add that sidecar explicitly only for a Paper2Any request
+or fixed-corpus evaluation. See [Paper2Any Integration](../guide/paper2any-integration.md)
+for explicit sidecar registration.
 
 The entry docs are intentionally layered:
 

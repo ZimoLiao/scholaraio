@@ -13,11 +13,9 @@ import contextlib
 import importlib
 import importlib.util
 import io
-import os
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -26,7 +24,6 @@ import yaml
 from scholaraio.core.config import Config, load_config
 from scholaraio.providers.mineru import check_server as check_mineru_server
 from scholaraio.providers.paper2any import Paper2AnyError, list_paper2any_tools, resolve_paper2any_mcp_url
-from scholaraio.providers.webtools import check_webextract_service
 
 # ============================================================================
 #  Bilingual strings
@@ -54,7 +51,6 @@ _S: dict[str, dict[Lang, str]] = {
     "contact_email": {"en": "Contact email", "zh": "联系邮箱"},
     "s2_key": {"en": "Semantic Scholar API key", "zh": "Semantic Scholar API key"},
     "zotero_key": {"en": "Zotero API key", "zh": "Zotero API key"},
-    "webextract": {"en": "Web extract", "zh": "Web extract"},
     "paper2any": {"en": "Paper2Any", "zh": "Paper2Any"},
     "directories": {"en": "Directories", "zh": "目录结构"},
     "papers_count": {"en": "Papers", "zh": "论文数量"},
@@ -553,24 +549,6 @@ def run_check(cfg: Config | None = None, lang: Lang = "zh") -> list[CheckResult]
             )
         )
 
-    webextract_detail = _optional_webtool_detail(
-        cfg,
-        section_name="webextract",
-        service_name="qt-web-extractor",
-        default_base_url="http://127.0.0.1:8766",
-        default_mcp_tool="fetch_url",
-        env_transport="WEBEXTRACT_TRANSPORT",
-        env_base_url="WEBEXTRACT_URL",
-        env_mcp_urls=("WEBEXTRACT_MCP_URL", "QT_WEB_EXTRACTOR_MCP_URL"),
-        env_mcp_tool="WEBEXTRACT_MCP_TOOL",
-        env_api_keys=("WEBEXTRACT_API_KEY", "QT_WEB_EXTRACTOR_API_KEY"),
-        command="scholaraio webextract",
-        start_hint="qt-web-extractor serve",
-        checker=check_webextract_service,
-        lang=lang,
-    )
-    results.append(CheckResult(t("webextract", lang), True, webextract_detail))
-
     results.append(CheckResult(t("paper2any", lang), True, _paper2any_detail(cfg, lang)))
 
     # Directories
@@ -600,63 +578,6 @@ def run_check(cfg: Config | None = None, lang: Lang = "zh") -> list[CheckResult]
     results.append(CheckResult(t("papers_count", lang), True, str(count)))
 
     return results
-
-
-def _optional_webtool_detail(
-    cfg: Config,
-    *,
-    section_name: str,
-    service_name: str,
-    default_base_url: str,
-    default_mcp_tool: str,
-    env_transport: str,
-    env_base_url: str,
-    env_mcp_urls: tuple[str, ...],
-    env_mcp_tool: str,
-    env_api_keys: tuple[str, ...],
-    command: str,
-    start_hint: str,
-    checker: Callable[..., bool],
-    lang: Lang,
-) -> str:
-    section = getattr(cfg, section_name)
-    transport = (getattr(section, "transport", "") or os.environ.get(env_transport) or "http").strip().lower()
-    base_url = (getattr(section, "base_url", "") or os.environ.get(env_base_url) or default_base_url).rstrip("/")
-    mcp_url = (getattr(section, "mcp_url", "") or _first_env(env_mcp_urls) or f"{base_url}/mcp").rstrip("/")
-    mcp_tool = getattr(section, "mcp_tool", "") or os.environ.get(env_mcp_tool, "").strip() or default_mcp_tool
-    endpoint = mcp_url if transport == "mcp" else base_url
-    endpoint_kind = "MCP" if transport == "mcp" else "HTTP"
-    api_key_configured = bool(getattr(section, "api_key", "") or _first_env(env_api_keys))
-
-    try:
-        reachable = bool(checker(cfg, timeout=1.0))
-    except Exception:
-        reachable = False
-
-    if lang == "zh":
-        status = "可访问" if reachable else "未运行/不可达"
-        auth = "认证已配置" if api_key_configured else "未配置认证"
-        return (
-            f"可选: {service_name} {endpoint_kind} @ {endpoint}; {status}; {auth}; "
-            f"配置 {section_name}.transport/{section_name}.mcp_url 或 {section_name}.base_url；"
-            f"启动: `{start_hint}`；验证: `{command}`" + (f"; MCP tool {mcp_tool}" if transport == "mcp" else "")
-        )
-
-    status = "reachable" if reachable else "not running/unreachable"
-    auth = "auth configured" if api_key_configured else "no auth configured"
-    return (
-        f"optional: {service_name} {endpoint_kind} @ {endpoint}; {status}; {auth}; "
-        f"configure {section_name}.transport/{section_name}.mcp_url or {section_name}.base_url; "
-        f"start: `{start_hint}`; verify: `{command}`" + (f"; MCP tool {mcp_tool}" if transport == "mcp" else "")
-    )
-
-
-def _first_env(names: tuple[str, ...]) -> str:
-    for name in names:
-        value = os.environ.get(name, "").strip()
-        if value:
-            return value
-    return ""
 
 
 def _paper2any_detail(cfg: Config, lang: Lang) -> str:
@@ -1244,13 +1165,6 @@ ingest:
   mineru_enable_formula: true         # only effective for pipeline / vlm
   mineru_enable_table: true           # only effective for pipeline / vlm
   abstract_llm_mode: verify # off | fallback | verify
-
-# Optional rendered web extraction for URL ingestion.
-webextract:
-  transport: mcp
-  mcp_url: http://127.0.0.1:8766/mcp
-  api_key: null        # optional bearer token -> config.local.yaml or env WEBEXTRACT_API_KEY
-  mcp_tool: fetch_url
 
 # Paper2Any external extension. ScholarAIO talks to its lightweight MCP sidecar;
 # the OpenDCAI/Paper2Any checkout stays outside tracked source.

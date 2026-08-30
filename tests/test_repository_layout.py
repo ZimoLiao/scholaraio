@@ -546,26 +546,6 @@ def test_toolref_legacy_snapshot_stays_out_of_runtime_package() -> None:
     assert not snapshot.exists()
 
 
-def test_webtools_provider_namespace_reexports_current_behavior() -> None:
-    legacy = importlib.import_module("scholaraio.providers.webtools")
-    provider = importlib.import_module("scholaraio.providers.webtools")
-
-    assert provider.WebSearchResult is legacy.WebSearchResult
-    assert provider.ServiceUnavailableError is legacy.ServiceUnavailableError
-    assert provider.search_web is legacy.search_web
-    assert provider.extract_web is legacy.extract_web
-    assert provider.websearch is legacy.websearch
-    assert provider.webextract is legacy.webextract
-    assert provider.webextract_batch is legacy.webextract_batch
-
-
-def test_webtools_legacy_module_aliases_provider_module_for_patch_compatibility() -> None:
-    legacy = importlib.import_module("scholaraio.providers.webtools")
-    provider = importlib.import_module("scholaraio.providers.webtools")
-
-    assert legacy is provider
-
-
 def test_arxiv_provider_namespace_reexports_current_behavior() -> None:
     legacy = importlib.import_module("scholaraio.providers.arxiv")
     provider = importlib.import_module("scholaraio.providers.arxiv")
@@ -1003,10 +983,8 @@ def test_internal_cli_wiring_commands_live_in_interface_namespace() -> None:
         ("cmd_enrich_l3", "scholaraio.interfaces.cli.enrich"),
         ("cmd_arxiv_search", "scholaraio.interfaces.cli.arxiv"),
         ("cmd_arxiv_fetch", "scholaraio.interfaces.cli.arxiv"),
-        ("cmd_webextract", "scholaraio.interfaces.cli.web"),
         ("cmd_paper2any", "scholaraio.interfaces.cli.paper2any"),
         ("cmd_explore", "scholaraio.interfaces.cli.explore"),
-        ("cmd_ingest_link", "scholaraio.interfaces.cli.ingest_link"),
         ("cmd_publish_site", "scholaraio.interfaces.cli.publish"),
         ("cmd_gui", "scholaraio.interfaces.cli.gui"),
         ("cmd_patent_fetch", "scholaraio.interfaces.cli.patent"),
@@ -1032,12 +1010,7 @@ def test_internal_cli_wiring_helper_aliases_live_in_interface_namespace() -> Non
         ("_write_all_viz", "scholaraio.interfaces.cli.topics"),
         ("_toc_success_message", "scholaraio.interfaces.cli.enrich"),
         ("_run_batch_enrich", "scholaraio.interfaces.cli.enrich"),
-        ("_terminal_preview", "scholaraio.interfaces.cli.web"),
         ("_explore_root", "scholaraio.interfaces.cli.explore"),
-        ("_slugify_ingest_link_title", "scholaraio.interfaces.cli.ingest_link"),
-        ("_fallback_ingest_link_title", "scholaraio.interfaces.cli.ingest_link"),
-        ("_render_ingest_link_markdown", "scholaraio.interfaces.cli.ingest_link"),
-        ("_webextract_for_ingest_link", "scholaraio.interfaces.cli.ingest_link"),
         ("_batch_convert_pdfs", "scholaraio.interfaces.cli.attach_pdf"),
     ):
         _assert_compat_binding(binding_name, module_name)

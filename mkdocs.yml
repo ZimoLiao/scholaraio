@@ -49,7 +49,6 @@ nav:
       - Ingestion: guide/ingestion.md
       - Writing: guide/writing.md
       - Nature Workflow Quick Start: guide/nature-workflow-quickstart.md
-      - Webtools Integration: guide/webtools-integration.md
       - Paper2Any Integration: guide/paper2any-integration.md
   - Writing Guides:
       - Paper Reading Framework: writing-guide/paper-reading-framework.md

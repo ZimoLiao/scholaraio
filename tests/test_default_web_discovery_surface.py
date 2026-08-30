@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 import yaml
@@ -33,24 +32,22 @@ def test_default_agent_skills_do_not_expose_or_route_to_websearch() -> None:
     assert offenders == []
 
 
-def test_default_cli_mcp_and_config_do_not_register_websearch() -> None:
-    assert "websearch" not in _subcommand_names(_build_parser())
-
-    mcp_config = json.loads((ROOT / ".mcp.json").read_text(encoding="utf-8"))
-    assert "web-search" not in mcp_config["mcpServers"]
+def test_default_cli_mcp_and_config_do_not_register_external_webtools() -> None:
+    subcommands = _subcommand_names(_build_parser())
+    assert {"websearch", "webextract", "ingest-link"}.isdisjoint(subcommands)
+    assert not (ROOT / ".mcp.json").exists()
 
     default_config = yaml.safe_load((ROOT / "config.yaml").read_text(encoding="utf-8"))
     setup_config = yaml.safe_load(_CONFIG_TEMPLATE)
-    assert "websearch" not in default_config
-    assert "websearch" not in setup_config
+    assert {"websearch", "webextract"}.isdisjoint(default_config)
+    assert {"websearch", "webextract"}.isdisjoint(setup_config)
 
 
 def test_paper2any_mcp_is_explicit_opt_in() -> None:
-    mcp_config = json.loads((ROOT / ".mcp.json").read_text(encoding="utf-8"))
     setup_guide = (ROOT / "docs" / "getting-started" / "agent-setup.md").read_text(encoding="utf-8")
 
-    assert "paper2any" not in mcp_config["mcpServers"]
-    assert "does not register Paper2Any" in setup_guide
+    assert not (ROOT / ".mcp.json").exists()
+    assert "does not register Paper2Any" in " ".join(setup_guide.split())
 
 
 def test_agent_entry_docs_do_not_recommend_websearch() -> None:

@@ -52,8 +52,6 @@ class TestBuildConfig:
         assert cfg.llm.backend == "openai-compat"
         assert cfg.paths.papers_dir == "data/libraries/papers"
         assert cfg.search.top_k == 20
-        assert cfg.websearch.base_url == ""
-        assert cfg.webextract.base_url == ""
         assert cfg.paper2any.root == ""
         assert cfg.paper2any.mcp_url == ""
 
@@ -162,38 +160,6 @@ class TestBuildConfig:
         assert cfg.translate.target_lang == "zh"
         assert cfg.translate.chunk_size == 4000
         assert cfg.translate.concurrency == 20
-
-    def test_web_service_sections_are_loaded(self, tmp_path):
-        cfg = _build_config(
-            {
-                "websearch": {
-                    "base_url": "http://localhost:8765",
-                    "api_key": "search-key",
-                    "transport": "mcp",
-                    "mcp_url": "http://localhost:8765/mcp",
-                    "mcp_tool": "search_bing",
-                },
-                "webextract": {
-                    "base_url": "http://localhost:8766",
-                    "api_key": "extract-key",
-                    "transport": "mcp",
-                    "mcp_url": "http://localhost:8766/mcp",
-                    "mcp_tool": "fetch_url",
-                },
-            },
-            tmp_path,
-        )
-
-        assert cfg.websearch.base_url == "http://localhost:8765"
-        assert cfg.websearch.api_key == "search-key"
-        assert cfg.websearch.transport == "mcp"
-        assert cfg.websearch.mcp_url == "http://localhost:8765/mcp"
-        assert cfg.websearch.mcp_tool == "search_bing"
-        assert cfg.webextract.base_url == "http://localhost:8766"
-        assert cfg.webextract.api_key == "extract-key"
-        assert cfg.webextract.transport == "mcp"
-        assert cfg.webextract.mcp_url == "http://localhost:8766/mcp"
-        assert cfg.webextract.mcp_tool == "fetch_url"
 
     def test_paper2any_section_is_loaded_without_dependency_surface(self, tmp_path):
         cfg = _build_config(

@@ -165,28 +165,8 @@ ScholarAIO knows how to reach the backup server. The restored
 instance to a different root, run `scholaraio setup check` and rebuild
 path-sensitive indexes.
 
-### Rendered Web Extraction
-
-Use the host agent's native web search and URL reading for ordinary discovery.
-Configure the optional extractor only when URL ingestion requires JavaScript-
-rendered or PDF content that native reading cannot provide:
-
-```yaml
-webextract:
-  transport: mcp
-  mcp_url: http://127.0.0.1:8766/mcp
-  api_key: "optional-token"
-  mcp_tool: fetch_url
-```
-
-The legacy HTTP endpoints are still supported:
-
-```yaml
-webextract:
-  transport: http
-  base_url: http://127.0.0.1:8766
-  api_key: "optional-token"
-```
+ScholarAIO does not configure an external web discovery or extraction service.
+Use the active agent's native web search and URL-reading tools instead.
 
 ### Paper2Any MCP Sidecar
 

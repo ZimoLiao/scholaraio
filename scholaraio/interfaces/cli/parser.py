@@ -41,7 +41,6 @@ def _build_parser() -> argparse.ArgumentParser:
     cmd_import_zotero = cli_mod.cmd_import_zotero
     cmd_attach_pdf = cli_mod.cmd_attach_pdf
     cmd_fetch_pdf = cli_mod.cmd_fetch_pdf
-    cmd_ingest_link = cli_mod.cmd_ingest_link
     cmd_arxiv_search = cli_mod.cmd_arxiv_search
     cmd_arxiv_fetch = cli_mod.cmd_arxiv_fetch
     cmd_patent_search = cli_mod.cmd_patent_search
@@ -53,7 +52,6 @@ def _build_parser() -> argparse.ArgumentParser:
     cmd_insights = cli_mod.cmd_insights
     cmd_migrate = cli_mod.cmd_migrate
     cmd_translate = cli_mod.cmd_translate
-    cmd_webextract = cli_mod.cmd_webextract
     cmd_paper2any = cli_mod.cmd_paper2any
     cmd_backup = cli_mod.cmd_backup
     cmd_metrics = cli_mod.cmd_metrics
@@ -688,14 +686,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_arxiv_fetch.add_argument("--dry-run", action="store_true", help="Preview planned actions")
 
-    # --- webextract ---
-    p_wext = sub.add_parser("webextract", help="Extract web content with qt-web-extractor")
-    p_wext.set_defaults(func=cmd_webextract)
-    p_wext.add_argument("url", help="Web page URL to extract")
-    p_wext.add_argument("--pdf", action="store_true", help="Treat the target as a PDF file")
-    p_wext.add_argument("--full", action="store_true", help="Print the full extraction result without truncation")
-    p_wext.add_argument("--max-chars", type=int, default=4000, help="Maximum preview characters (default: 4000)")
-
     # --- paper2any ---
     p_paper2any = sub.add_parser("paper2any", help="Paper2Any MCP sidecar integration")
     p_paper2any.set_defaults(func=cmd_paper2any)
@@ -763,20 +753,6 @@ def _build_parser() -> argparse.ArgumentParser:
         default="{}",
         help='Tool arguments as a JSON object (default: "{}")',
     )
-
-    # --- ingest-link ---
-    p_ingest_link = sub.add_parser(
-        "ingest-link", help="Extract rendered web pages or online PDFs and ingest them as documents"
-    )
-    p_ingest_link.set_defaults(func=cmd_ingest_link)
-    p_ingest_link.add_argument("urls", nargs="+", help="One or more web page or online PDF URLs")
-    p_ingest_link.add_argument("--dry-run", action="store_true", help="Preview planned actions")
-    p_ingest_link.add_argument("--force", action="store_true", help="Force reprocessing generated documents")
-    p_ingest_link.add_argument(
-        "--pdf", action="store_true", help="Hint webextract to use PDF mode when auto-detection is unreliable"
-    )
-    p_ingest_link.add_argument("--no-index", action="store_true", help="Ingest only; skip embed/index")
-    p_ingest_link.add_argument("--json", action="store_true", help="Print extraction summary as JSON")
 
     # --- publish-site ---
     p_publish = sub.add_parser(

@@ -91,7 +91,7 @@ def test_clawhub_registers_new_writing_skills() -> None:
 
 
 def test_common_agent_workflows_use_current_agent_native_capabilities() -> None:
-    native_first_skills = ("academic-writing", "paper-guided-reading", "draw", "document", "webextract")
+    native_first_skills = ("academic-writing", "paper-guided-reading", "draw", "document")
     shared_skills = (*native_first_skills, "paper2any")
 
     for skill_name in native_first_skills:

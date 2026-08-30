@@ -22,7 +22,6 @@ from scholaraio.interfaces.cli import explore as _explore_cli
 from scholaraio.interfaces.cli import export as _export_cli
 from scholaraio.interfaces.cli import fsearch as _fsearch_cli
 from scholaraio.interfaces.cli import import_zotero as _import_zotero_cli
-from scholaraio.interfaces.cli import ingest_link as _ingest_link_cli
 from scholaraio.interfaces.cli import output as _output_cli
 from scholaraio.interfaces.cli import paper as _paper_cli
 from scholaraio.interfaces.cli import paper2any as _paper2any_cli
@@ -32,7 +31,6 @@ from scholaraio.interfaces.cli import publish as _publish_cli
 from scholaraio.interfaces.cli import runtime as _runtime_cli
 from scholaraio.interfaces.cli import search_metrics as _search_metrics_cli
 from scholaraio.interfaces.cli import topics as _topics_cli
-from scholaraio.interfaces.cli import web as _web_cli
 from scholaraio.interfaces.cli.arxiv import cmd_arxiv_fetch, cmd_arxiv_search
 from scholaraio.interfaces.cli.audit import cmd_audit
 from scholaraio.interfaces.cli.backfill_abstract import cmd_backfill_abstract
@@ -87,17 +85,10 @@ cmd_enrich_toc = _enrich_cli.cmd_enrich_toc
 cmd_enrich_l3 = _enrich_cli.cmd_enrich_l3
 _toc_success_message = _enrich_cli._toc_success_message
 _run_batch_enrich = _enrich_cli._run_batch_enrich
-cmd_webextract = _web_cli.cmd_webextract
 cmd_paper2any = _paper2any_cli.cmd_paper2any
-_terminal_preview = _web_cli._terminal_preview
 cmd_explore = _explore_cli.cmd_explore
 _explore_root = _explore_cli._explore_root
-cmd_ingest_link = _ingest_link_cli.cmd_ingest_link
 cmd_publish_site = _publish_cli.cmd_publish_site
-_slugify_ingest_link_title = _ingest_link_cli._slugify_ingest_link_title
-_fallback_ingest_link_title = _ingest_link_cli._fallback_ingest_link_title
-_render_ingest_link_markdown = _ingest_link_cli._render_ingest_link_markdown
-_webextract_for_ingest_link = _ingest_link_cli._webextract_for_ingest_link
 cmd_attach_pdf = _attach_pdf_cli.cmd_attach_pdf
 _batch_convert_pdfs = _attach_pdf_cli._batch_convert_pdfs
 
@@ -144,7 +135,6 @@ __all__ = [
     "_default_inbox_dir",
     "_enrich_show_header",
     "_explore_root",
-    "_fallback_ingest_link_title",
     "_format_citations",
     "_format_match_tag",
     "_import_zotero_collections_as_workspaces",
@@ -157,17 +147,13 @@ __all__ = [
     "_query_arxiv_ids_for_set",
     "_query_dois_for_set",
     "_record_search_metrics",
-    "_render_ingest_link_markdown",
     "_resolve_paper",
     "_resolve_result_limit",
     "_resolve_top",
     "_resolve_ws_paper_ids",
     "_run_batch_enrich",
     "_search_arxiv",
-    "_slugify_ingest_link_title",
-    "_terminal_preview",
     "_toc_success_message",
-    "_webextract_for_ingest_link",
     "_workspace_figures_dir",
     "_workspace_root",
     "_write_all_viz",
@@ -192,7 +178,6 @@ __all__ = [
     "cmd_import_endnote",
     "cmd_import_zotero",
     "cmd_index",
-    "cmd_ingest_link",
     "cmd_insights",
     "cmd_metrics",
     "cmd_migrate",
@@ -218,7 +203,6 @@ __all__ = [
     "cmd_translate",
     "cmd_usearch",
     "cmd_vsearch",
-    "cmd_webextract",
     "cmd_ws",
     "load_config",
     "main",
