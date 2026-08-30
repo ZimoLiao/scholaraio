@@ -26,7 +26,7 @@ pip install -e ".[full]"
 scholaraio setup
 ```
 
-`scholaraio setup check` is the companion diagnostic command. It reports both the core setup state and optional advanced items such as Semantic Scholar / Zotero API keys, the rendered web-extraction endpoint, and Paper2Any sidecar readiness. Current setup guidance prefers MinerU first whenever a MinerU path is available.
+`scholaraio setup check` is the companion diagnostic command. It reports both the core setup state and optional advanced items such as Semantic Scholar / Zotero API keys and Paper2Any sidecar readiness. Current setup guidance prefers MinerU first whenever a MinerU path is available.
 
 Then start your agent in the repository root:
 

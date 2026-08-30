@@ -480,7 +480,7 @@ Legacy compatibility outputs such as `workspace/translation-ws/`, `workspace/fig
 
 - skills MUST remain an interface-layer concern
 - skills MUST NOT become the canonical source of runtime layout truth
-- skill names and CLI verbs MAY stay stable even when the backend transport changes; optional external integrations such as rendered web extraction MUST NOT be locked to a single skill-packaging or HTTP-only implementation shape
+- skill names and CLI verbs MAY stay stable even when a backend transport changes; optional external integrations MUST NOT be locked to a single skill-packaging or HTTP-only implementation shape
 - host wrappers MUST remain lightweight and SHOULD defer to `AGENTS.md` plus the skill system
 
 ## 9. Multi-Agent Discovery and Registration Constraints

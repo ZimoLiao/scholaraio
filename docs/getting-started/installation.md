@@ -83,7 +83,7 @@ scholaraio setup agent check
 `setup check` is the most complete initial diagnostic surface. It covers:
 
 - core setup items: dependency groups, `config.yaml`, LLM key, MinerU / Docling availability, parser recommendation, Graphviz `dot`, Inkscape, `contact_email`, and directory state
-- optional advanced items: Semantic Scholar API key, Zotero API key, rendered web-extraction service, and Paper2Any sidecar readiness
+- optional advanced items: Semantic Scholar API key, Zotero API key, and Paper2Any sidecar readiness
 
 Current setup guidance prefers **MinerU first** whenever a MinerU path is available (local service or `mineru-open-api` + token). `Docling` and then PyMuPDF remain the fallback chain when MinerU is not usable or when the user explicitly prefers a lighter parser path.
 
