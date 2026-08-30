@@ -2,7 +2,7 @@
 
 Status: Historical audit, updated for the current compatibility window
 
-Last Updated: 2026-07-15
+Last Updated: 2026-08-30
 
 Scope: repo-wide audit of hardcoded runtime paths, operational knobs, and external-service defaults that are candidates for formal configuration.
 
@@ -11,6 +11,16 @@ Scope: repo-wide audit of hardcoded runtime paths, operational knobs, and extern
 - external web discovery now uses the host agent's native search capability
 - the former search skill, CLI command, default MCP registration, setup check, and generated config block have been removed
 - `Config.websearch` and the low-level provider adapter remain compatibility-only; older recommendations below to expose them through the CLI or skill layer are superseded
+
+2026-08-30 next-major cleanup note:
+
+- the remaining `Config.websearch` / `Config.webextract` fields, provider code,
+  CLI commands, skills, setup diagnostics, and environment-variable adapters
+  have been removed
+- active agents now own live web discovery and URL reading; reviewable content
+  enters ScholarAIO through supported inbox files and the normal ingest pipeline
+- the webtools details retained later in this historical audit describe the
+  pre-removal surface and are superseded by this note
 
 2026-04-23 status note:
 
@@ -67,7 +77,6 @@ The audit intentionally separates:
 - topics model directory (`cfg.topics_model_dir`, now backed by logical-state defaults plus legacy auto-detection)
 - translation chunk size and concurrency
 - patent ODP API key
-- websearch / webextract service endpoints and API keys
 - backup target settings
 - OpenAlex API key
 
@@ -292,11 +301,15 @@ This belongs in the config/bootstrap design, not as a free-form user knob.
 
 ## 6. P1 Findings: Operational Knobs Worth Config After Path Authority
 
-### 6.1 Webtools Already Has Config Support, but the Transport Contract Should Stay Flexible
+### 6.1 Webtools Configuration (Resolved By Removal)
 
-Current behavior:
+Resolution (2026-08-30): the next-major cleanup removes this configuration and
+its owning runtime surfaces. The inventory below is retained only as a record of
+the pre-removal compatibility window.
 
-- current code already supports:
+Historical behavior:
+
+- the code supported:
   - `websearch.base_url`
   - `websearch.api_key`
   - `websearch.transport`
@@ -307,7 +320,7 @@ Current behavior:
   - `webextract.transport`
   - `webextract.mcp_url`
   - `webextract.mcp_tool`
-- environment variables still exist as fallback / override:
+- environment variables existed as fallback / override:
   - `WEBSEARCH_URL`
   - `WEBEXTRACT_URL`
   - `WEBSEARCH_API_KEY`
@@ -321,8 +334,8 @@ Current behavior:
   - `QT_WEB_EXTRACTOR_MCP_URL`
   - `QT_WEB_EXTRACTOR_API_KEY`
 - localhost defaults and several timeout values still live in code
-- `websearch` now supports an explicit `transport: mcp` provider path for GUILessBingSearch remote `search_bing`
-- `webextract` now supports an explicit `transport: mcp` provider path for qt-web-extractor remote `fetch_url`
+- `websearch` supported an explicit `transport: mcp` provider path for GUILessBingSearch remote `search_bing`
+- `webextract` supported an explicit `transport: mcp` provider path for qt-web-extractor remote `fetch_url`
 - common MCP Streamable HTTP client behavior lives in `scholaraio/providers/mcp.py`
 
 Source:
@@ -335,9 +348,8 @@ Source:
 
 Recommendation:
 
-- keep the current endpoint / auth fields as compatibility config for HTTP-backed mode
-- keep `websearch.transport` and `webextract.transport` as explicit backend selectors instead of adding HTTP-only knobs
-- keep `websearch` and `webextract` as logical capabilities at the CLI/skill layer even when their provider transports differ
+- do not restore these fields unless a future integration independently passes
+  the current third-party admission gate
 
 Assessment:
 
@@ -712,10 +724,6 @@ Example gaps:
 - `ingest.pdf_fallback_order`
 - `ingest.pdf_fallback_auto_detect`
 - `patent.uspto_odp_api_key`
-- `websearch.base_url`
-- `websearch.api_key`
-- `webextract.base_url`
-- `webextract.api_key`
 - backup configuration surface
 
 Relevant sources:
@@ -827,7 +835,7 @@ This gives the highest leverage for the directory upgrade work.
 
 After path authority is in place:
 
-- expose already-existing patent / websearch / webextract config through setup templates and configuration docs
+- expose already-existing patent config through setup templates and configuration docs
 - add missing MinerU timeout knobs
 - add toolref network/discovery config
 - add translation retry config

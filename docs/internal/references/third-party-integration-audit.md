@@ -1,5 +1,9 @@
 # ScholarAIO Third-Party Integration Quality Audit
 
+Status: Current integration inventory
+
+Last Updated: 2026-08-30
+
 This document records the quality, reachability, and output validation status of the third-party integrations, APIs, CLIs, and optional toolchains supported by ScholarAIO.
 
 Dependency admission and Codex-native overlap decisions are maintained in
@@ -23,8 +27,6 @@ Status is intentionally conservative:
 
 | Integration / Surface | Category | Status | Verification Path / Test Evidence | Observed Result / Config & Version Boundaries |
 | :--- | :--- | :--- | :--- | :--- |
-| **qt-web-extractor (HTTP & MCP)** | Web / Agent | **partially-reviewed** | `extract_web`, `_clean_table_code_fences`, `tests/test_webtools_source.py`, fixture pair under `tests/fixtures/` | Sanitizer regression is covered for malformed table-cell code fences and adjacent standalone code blocks. Live daemon canary evidence is still required before this surface is promoted to `good`. Boundaries: `webextract.transport` (HTTP/MCP), `webextract.base_url`, `webextract.mcp_url`, `webextract.api_key`. |
-| **GUILessBingSearch compatibility adapter** | Web / Agent | **not a default surface** | `tests/test_webtools_source.py` | Retained only for existing Python/config callers. ScholarAIO no longer registers a search skill, CLI command, setup check, generated config block, or default MCP server; agents use host-native web search. |
 | **MinerU Local API** | Parsing | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
 | **MinerU Cloud CLI** | Parsing | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
 | **Paper2Any MCP Sidecar** | Parsing/MCP | **not-yet-reviewed** | N/A | Excluded from current triage phase. |
@@ -55,24 +57,13 @@ Status is intentionally conservative:
 
 ---
 
-## 2. Current Reviewed Surface
+## 2. Removed Surfaces
 
-### 2.1 qt-web-extractor (HTTP & MCP)
-* **CLI/Skill Entrypoint**:
-  * CLI: `scholaraio webextract <url>` (implemented in `cmd_webextract` inside `scholaraio/interfaces/cli/web.py`)
-  * Skill: `.claude/skills/webextract`
-* **Provider/Service Implementation Path**:
-  * `scholaraio/providers/webtools.py:extract_web`
-* **Setup Diagnostics**:
-  * Diagnostic path exists through `scholaraio setup check` (calls `_optional_webtool_detail` inside `scholaraio/services/setup.py`), which executes `check_webextract_service` to verify that the HTTP/MCP endpoint responds. This PR does not include live daemon evidence from that path.
-* **Output Quality & Validation**:
-  * Outputs parsed GFM Markdown. Output quality is protected by `_clean_table_code_fences` to sanitize malformed block code fences in Wikipedia/infobox table cells, resolving broken table rendering.
-  * Verified via unit and fixture coverage: `tests/fixtures/wikipedia_infobox_bad.md`, `tests/fixtures/wikipedia_infobox_clean.md`, and regression tests for standalone fenced code blocks near table or pipe-prefixed lines.
-* **Fallback Behavior**:
-  * Configured via `webextract.transport` (HTTP or MCP). When configured as HTTP, failure to connect triggers fallback hint to MCP or setup checks.
-* **Failure Handling**:
-  * Unreachable HTTP endpoints raise `WebExtractServiceUnavailableError`, returning a clean user-facing hint with exit code `1`.
-  * API/Server errors raise `WebExtractError`, showing warnings/errors instead of generic crashes.
+The next-major breaking cleanup removes qt-web-extractor and the dormant
+GUILessBingSearch compatibility adapter after they failed the current admission
+gate. ScholarAIO no longer owns their MCP registration, skills, CLI commands,
+configuration, setup diagnostics, providers, or live canaries. Past validation
+reports remain unchanged because they describe released historical versions.
 
 ## 3. Not-Yet-Reviewed Inventory
 

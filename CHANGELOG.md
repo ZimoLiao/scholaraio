@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Removed
 
-- **External webtools adapter**: Removed the `qt-web-extractor` MCP registration, `webextract` and `ingest-link` skills and CLI commands, setup/configuration surface, provider implementation, and the dormant GUILessBingSearch compatibility code. Live web discovery and URL reading now belong entirely to the active agent's native capabilities; selected content can still enter ScholarAIO through the normal document inbox and ingest pipeline.
+- **External webtools adapter (next major)**: Removed the `qt-web-extractor` MCP registration, `webextract` and `ingest-link` skills and CLI commands, setup/configuration surface, provider implementation, and the dormant GUILessBingSearch compatibility code. This is a breaking cleanup for the next major generation and must not ship in the 2.x line without the deprecation window required by the 2.x public contract. Live web discovery and URL reading now belong entirely to the active agent's native capabilities; selected content can still enter ScholarAIO through the normal document inbox and ingest pipeline.
 
 ## [2.0.0] — 2026-08-17
 

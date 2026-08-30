@@ -84,11 +84,11 @@ files until migration verification passes. See [Upgrading To
 
 ## Removed Or Narrowed Surfaces
 
-- ScholarAIO 2.0 removed the old `websearch` surface. The post-2.0 tree also
-  removes the external `webextract` and `ingest-link` adapters. Use the active
-  agent's native web search and URL reading; when web content should enter the
-  library, save a reviewable document to an inbox and use the normal ingest
-  workflow.
+- ScholarAIO 2.0 removed the old `websearch` surface. The external `webextract`
+  and `ingest-link` adapters remained part of the 2.0 contract; the next-major
+  breaking cleanup removes them. On that cleanup branch, use the active agent's
+  native web search and URL reading; when web content should enter the library,
+  save a reviewable document to an inbox and use the normal ingest workflow.
 - The empty `scholaraio[draw]` extra is removed. Diagram source generation
   remains available; Graphviz and Inkscape are explicit system tools when
   rendering requires them.

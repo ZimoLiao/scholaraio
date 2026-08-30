@@ -145,7 +145,7 @@ Backend workflow families:
 
 ## Agent MCP Registration
 
-The project `.mcp.json` intentionally does not register Paper2Any. Register the
+The project does not ship a `.mcp.json` and intentionally does not register Paper2Any. Register the
 sidecar explicitly only for a Paper2Any request or fixed-corpus evaluation:
 
 ```json

@@ -11,6 +11,12 @@ Toolref legacy snapshot and replacing its differential-oracle coverage with
 explicit contract tests. The baseline counts and remaining evidence below stay
 pinned to the audited repository revision unless a finding is marked resolved.
 
+Update note (2026-08-30): the next-major external-webtools cleanup resolves the
+qt-web-extractor and GUILessBingSearch portion of TD-10 by removing their MCP,
+skill, CLI, config, setup, provider, and validation surfaces. The earlier
+keep-optional recommendation below is superseded; historical validation reports
+remain pinned to the versions they evaluated.
+
 ## 1. Executive Summary
 
 ScholarAIO is in a workable beta state, with a substantial automated test suite
@@ -393,6 +399,12 @@ import/CLI smoke. Split provider-specific conveniences such as `modelscope` and
 
 ### TD-10 — P2 — external integrations lack a native-first admission gate and synchronized evidence
 
+**Resolution (2026-08-30)**
+
+Resolved for the external webtools surface in the next-major cleanup. Routine
+web access belongs to the active agent, while reviewable content can enter the
+normal document inbox. Paper2Any remains separately isolated and evidence-gated.
+
 **Evidence**
 
 `docs/internal/references/third-party-integration-audit.md` still marks most
@@ -428,9 +440,9 @@ Adopt the admission gate in section 6. In particular:
 
 - keep routine web discovery on Codex/host-native search; do not restore
   GUILessBingSearch as a default surface;
-- keep `qt-web-extractor` optional for JS-rendered pages, batch extraction,
-  ingestion-ready Markdown, and reproducible provenance, with native URL reading
-  first;
+- remove `qt-web-extractor` from ScholarAIO after it failed to demonstrate enough
+  recurring academic value to justify its MCP, skill, CLI, config, setup, and
+  provider maintenance surface;
 - keep Paper2Any isolated from the Python base/full extras and remove any
   implication that it is required; run a fixed-corpus bakeoff before promoting
   individual capabilities;
@@ -456,7 +468,7 @@ belongs in the default package.
 | `cli-anything-inkscape` | **Skill-only or remove** | No active runtime path. Direct SVG/DOT generation covers most current use; require an editable-vector quality win before publishing it as a dependency. |
 | `modelscope` | **Keep narrow optional** | Valuable where ModelScope is the selected embedding-model source. It should not silently broaden the base install. |
 | `curl-cffi` | **Keep narrow optional fallback** | It supports a specific DOI/Cloudflare recovery path. Treat it as a provider fallback, not a general HTTP replacement. |
-| `qt-web-extractor` | **Keep optional, native-first** | Justified for rendered/batch/ingestion-ready extraction; unnecessary for routine source reading that the host can perform. |
+| `qt-web-extractor` | **Remove in next major** | Its rendered/batch path is useful in isolation, but did not justify a permanent ScholarAIO surface over host-native reading plus the normal document inbox. Keep it available only as a user-managed external tool. |
 | GUILessBingSearch adapter | **Deprecate/remove; do not reintroduce** | Host-native source-backed web search offers the better agent workflow. Retain only a time-bounded compatibility path if known Python callers still exist. |
 | Paper2Any | **Quarantine and benchmark** | Do not vendor or add to base/full. Promote only capabilities that beat native ScholarAIO + Codex on fixed acceptance criteria, especially editable/layout-preserving output. |
 | OpenAlex, Crossref, Semantic Scholar, arXiv, USPTO, Zotero APIs | **Keep provider adapters** | They provide structured, attributable identifiers and metadata. Native web search may help discovery but should not replace authoritative data contracts. |

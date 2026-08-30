@@ -55,3 +55,18 @@ def test_agent_entry_docs_do_not_recommend_websearch() -> None:
     for path in (ROOT / "AGENTS.md", ROOT / "AGENTS_CN.md"):
         text = path.read_text(encoding="utf-8").lower()
         assert not any(token in text for token in forbidden)
+
+
+def test_current_setup_docs_and_validation_matrix_do_not_advertise_external_webtools() -> None:
+    for relative_path in (
+        "docs/getting-started/agent-setup.md",
+        "docs/getting-started/installation.md",
+    ):
+        text = (ROOT / relative_path).read_text(encoding="utf-8").lower()
+        assert "webextract" not in text
+        assert "qt-web-extractor" not in text
+        assert "rendered web-extraction" not in text
+
+    validation_matrix = (ROOT / "docs/internal/validation/upgrade-validation-matrix.md").read_text(encoding="utf-8")
+    assert "`webextract` / `ingest-link` | one real rendered-page extraction" not in validation_matrix
+    assert "`arxiv`, `webextract`, `ingest-link`" not in validation_matrix

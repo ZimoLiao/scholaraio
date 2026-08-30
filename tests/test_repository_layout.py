@@ -249,7 +249,7 @@ def test_upgrade_validation_matrix_tracks_current_release_gate_and_migration_sur
     user_strategy = USER_DATA_MIGRATION_STRATEGY.read_text(encoding="utf-8")
 
     assert "Status: Compatibility-window validation authority" in validation
-    assert "Last Updated: 2026-04-24" in validation
+    assert "Last Updated: 2026-08-30" in validation
     assert "A `--help` screen does not count as functional validation." in validation
     assert "`../scholaraio/`" in validation
     assert "workspace/release-validation/<stamp>/" in validation
