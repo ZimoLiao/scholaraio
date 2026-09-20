@@ -113,6 +113,38 @@ class TestAuditDetection:
         assert all(i.rule != "missing_journal" for i in book_issues)
         assert all(i.rule != "missing_abstract" for i in book_issues)
 
+    def test_noncanonical_paper_type_is_reported(self, tmp_papers):
+        paper_dir = tmp_papers / "Doe-2024-Review"
+        paper_dir.mkdir()
+        (paper_dir / "meta.json").write_text(
+            json.dumps(
+                {
+                    "id": "review-4444",
+                    "title": "A review of fluid mechanics",
+                    "authors": ["Jamie Doe"],
+                    "first_author_lastname": "Doe",
+                    "year": 2024,
+                    "doi": "10.1234/review",
+                    "journal": "Annual Review of Fluid Mechanics",
+                    "abstract": "A review abstract.",
+                    "paper_type": "journal-article",
+                }
+            ),
+            encoding="utf-8",
+        )
+        (paper_dir / "paper.md").write_text(
+            "# A review of fluid mechanics\n\n" + "Review body. " * 30,
+            encoding="utf-8",
+        )
+
+        issues = audit_papers(tmp_papers)
+        type_issues = [
+            issue for issue in issues if issue.paper_id == paper_dir.name and issue.rule == "noncanonical_paper_type"
+        ]
+
+        assert len(type_issues) == 1
+        assert "review" in type_issues[0].message
+
     def test_title_mismatch_uses_later_title_heading_after_front_matter(self, tmp_papers):
         d = tmp_papers / "FrontMatter-2024-Flow"
         d.mkdir()

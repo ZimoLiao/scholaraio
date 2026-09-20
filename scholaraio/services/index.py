@@ -126,7 +126,7 @@ def _index_hash(meta: dict) -> str:
         meta.get("abstract") or "",
         meta.get("l3_conclusion") or "",
         meta.get("doi") or "",
-        normalize_paper_type(meta.get("paper_type")),
+        normalize_paper_type(meta.get("paper_type"), meta.get("journal"), meta.get("doi")),
         ((meta.get("ids") or {}).get("patent_publication_number", "") or ""),
     ]
     cc = meta.get("citation_count")
@@ -252,7 +252,7 @@ def build_index(papers_dir: Path, db_path: Path, rebuild: bool = False) -> int:
                     meta.get("abstract") or "",
                     meta.get("l3_conclusion") or "",
                     meta.get("doi") or "",
-                    normalize_paper_type(meta.get("paper_type")),
+                    normalize_paper_type(meta.get("paper_type"), meta.get("journal"), meta.get("doi")),
                     str(best_cite) if best_cite is not None else "",
                     str(md_file) if md_file.exists() else "",
                 ),

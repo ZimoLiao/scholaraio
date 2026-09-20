@@ -12,6 +12,7 @@ papers.py — 论文目录结构的唯一真相源
 
 from __future__ import annotations
 
+import html
 import json
 import re
 import shutil
@@ -19,26 +20,87 @@ import uuid
 from collections.abc import Iterator
 from pathlib import Path
 
+_REVIEW_ONLY_JOURNAL_PREFIXES = (
+    "annual review of ",
+    "current opinion in ",
+    "foundations and trends in ",
+    "living reviews in ",
+    "nature reviews ",
+)
 
-def normalize_paper_type(value: object) -> str:
-    """Return the canonical kebab-case paper type used by filters and views."""
+_REVIEW_ONLY_JOURNALS = frozenset(
+    {
+        "applied mechanics reviews",
+        "physics reports",
+        "progress in aerospace sciences",
+        "progress in energy and combustion science",
+        "renewable and sustainable energy reviews",
+        "reports on progress in physics",
+        "reviews in chemical engineering",
+        "reviews of geophysics",
+        "reviews of modern physics",
+        "space science reviews",
+    }
+)
+
+
+def _normalized_journal_name(value: object) -> str:
+    text = html.unescape(str(value or "")).replace("®", " ")
+    return re.sub(r"\s+", " ", text).strip().casefold()
+
+
+def is_review_only_journal(value: object) -> bool:
+    """Return whether a venue publishes review articles by design.
+
+    The allowlist is deliberately conservative.  Generic names containing
+    words such as ``Review`` or ``Progress`` are not enough because journals
+    such as Physical Review and ordinary research venues would be false
+    positives.
+    """
+    journal = _normalized_journal_name(value)
+    return journal in _REVIEW_ONLY_JOURNALS or journal.startswith(_REVIEW_ONLY_JOURNAL_PREFIXES)
+
+
+def normalize_paper_type(value: object, journal: object = "", doi: object = "") -> str:
+    """Return the canonical paper type used in metadata, filters, and views."""
     raw = str(value or "").strip()
-    if not raw:
-        return ""
-    text = re.sub(r"([a-z0-9])([A-Z])", r"\1-\2", raw)
-    text = re.sub(r"[\s_]+", "-", text).lower().strip("-")
-    text = re.sub(r"-+", "-", text)
-    compact = re.sub(r"[^a-z0-9]", "", text)
+    text = ""
+    compact = ""
+    if raw:
+        text = re.sub(r"([a-z0-9])([A-Z])", r"\1-\2", raw)
+        text = re.sub(r"[\s_]+", "-", text).lower().strip("-")
+        text = re.sub(r"-+", "-", text)
+        compact = re.sub(r"[^a-z0-9]", "", text)
     aliases = {
         "article": "journal-article",
+        "jour": "journal-article",
         "journalarticle": "journal-article",
+        "monograph": "book",
         "researcharticle": "journal-article",
         "proceedingsarticle": "conference-paper",
         "conferencearticle": "conference-paper",
         "conferencepaper": "conference-paper",
         "bookchapter": "book-chapter",
     }
-    return aliases.get(compact, text)
+    paper_type = aliases.get(compact, text)
+    if not paper_type and str(journal or "").strip() and str(doi or "").strip():
+        paper_type = "journal-article"
+    if paper_type in {"", "journal-article"} and is_review_only_journal(journal):
+        return "review"
+    return paper_type
+
+
+def normalize_paper_metadata(data: dict) -> dict:
+    """Return a shallow copy with ``paper_type`` normalized canonically."""
+    normalized = dict(data)
+    paper_type = normalize_paper_type(
+        normalized.get("paper_type"),
+        normalized.get("journal"),
+        normalized.get("doi"),
+    )
+    if paper_type or "paper_type" in normalized:
+        normalized["paper_type"] = paper_type
+    return normalized
 
 
 def authors_text(authors: object) -> str:
@@ -235,6 +297,7 @@ def write_meta(paper_d: Path, data: dict) -> None:
         paper_d: Paper directory path.
         data: Metadata dict to serialize.
     """
+    data = normalize_paper_metadata(data)
     p = paper_d / "meta.json"
     tmp = p.with_suffix(".json.tmp")
     tmp.write_text(
@@ -256,5 +319,6 @@ def update_meta(paper_d: Path, **fields) -> dict:
     """
     data = read_meta(paper_d)
     data.update(fields)
+    data = normalize_paper_metadata(data)
     write_meta(paper_d, data)
     return data

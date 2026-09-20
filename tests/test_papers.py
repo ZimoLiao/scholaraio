@@ -9,13 +9,17 @@ from __future__ import annotations
 
 from scholaraio.stores.papers import (
     best_citation,
+    is_review_only_journal,
     is_scrubbed,
     iter_paper_dirs,
     mark_scrubbed,
     md_path,
     meta_path,
+    normalize_paper_type,
     paper_dir,
+    read_meta,
     scrub_marker_path,
+    write_meta,
 )
 
 
@@ -66,6 +70,47 @@ class TestCitationHelpers:
 
     def test_best_citation_accepts_dict_counts(self):
         assert best_citation({"citation_count": {"crossref": 3, "semantic_scholar": 11}}) == 11
+
+
+class TestPaperTypeNormalization:
+    def test_normalizes_journal_and_book_aliases(self):
+        assert normalize_paper_type("jour") == "journal-article"
+        assert normalize_paper_type("JournalArticle") == "journal-article"
+        assert normalize_paper_type("monograph") == "book"
+
+    def test_review_only_journals_override_generic_article_type(self):
+        assert normalize_paper_type("journal-article", "Annual Review of Fluid Mechanics") == "review"
+        assert normalize_paper_type("jour", "Nature Reviews Physics") == "review"
+        assert normalize_paper_type("journal-article", "Reviews of Modern Physics") == "review"
+
+    def test_review_detection_is_conservative(self):
+        assert is_review_only_journal("Reviews of Geophysics") is True
+        assert is_review_only_journal("Physical Review Letters") is False
+        assert normalize_paper_type("journal-article", "Physical Review Letters") == "journal-article"
+
+    def test_explicit_specialized_type_survives_review_venue_inference(self):
+        for paper_type in ("editorial", "correction", "book-chapter", "posted-content"):
+            assert normalize_paper_type(paper_type, "Nature Reviews Physics") == paper_type
+
+    def test_missing_type_with_journal_and_doi_is_a_journal_article(self):
+        assert normalize_paper_type("", "SIAM Journal on Mathematical Analysis", "10.1137/example") == (
+            "journal-article"
+        )
+
+    def test_write_meta_persists_canonical_type(self, tmp_path):
+        paper_d = tmp_path / "Paper"
+        paper_d.mkdir()
+
+        write_meta(
+            paper_d,
+            {
+                "title": "A Review",
+                "journal": "Annual Review of Fluid Mechanics",
+                "paper_type": "jour",
+            },
+        )
+
+        assert read_meta(paper_d)["paper_type"] == "review"
 
 
 class TestScrubMarkers:

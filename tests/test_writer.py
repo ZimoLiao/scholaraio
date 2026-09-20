@@ -227,6 +227,17 @@ class TestMetadataToDict:
         d = metadata_to_dict(meta)
         assert d["ids"] == {}
 
+    def test_paper_type_is_canonicalized_with_journal_context(self):
+        article = metadata_to_dict(PaperMetadata(paper_type="jour", journal="Journal of Fluid Mechanics"))
+        review = metadata_to_dict(
+            PaperMetadata(paper_type="journal-article", journal="Annual Review of Fluid Mechanics")
+        )
+        book = metadata_to_dict(PaperMetadata(paper_type="monograph"))
+
+        assert article["paper_type"] == "journal-article"
+        assert review["paper_type"] == "review"
+        assert book["paper_type"] == "book"
+
 
 class TestRenamePaper:
     def test_rename_changes_dir(self, tmp_path):
@@ -315,7 +326,7 @@ class TestRefetchMetadata:
             "doi": "10.1234/test",
             "journal": "JFM",
             "abstract": "Old abstract",
-            "paper_type": "article",
+            "paper_type": "journal-article",
             "citation_count": {"crossref": 5, "semantic_scholar": 7},
             "ids": {"doi": "10.1234/test", "semantic_scholar": "s2-1"},
             "api_sources": ["crossref", "semantic_scholar"],
@@ -351,7 +362,7 @@ class TestRefetchMetadata:
             "arxiv_id": "hep-th/9901001",
             "journal": "arXiv",
             "abstract": "Old abstract",
-            "paper_type": "article",
+            "paper_type": "journal-article",
             "citation_count": {"crossref": 5, "semantic_scholar": 7},
             "ids": {"arxiv": "hep-th/9901001", "semantic_scholar": "s2-1"},
             "api_sources": ["arxiv", "semantic_scholar"],

@@ -167,6 +167,7 @@ scholaraio citation-check
 
 - `audit` checks missing metadata, duplicate DOIs, filename issues, and title/content mismatches.
 - `audit` uses paper-type-aware skips so documents, patents, dissertations, and similar front matter do not create spurious `title_mismatch` warnings.
+- `audit` reports `noncanonical_paper_type` when a stored type differs from the value used by search and library views. Metadata writes normalize aliases such as `jour` to `journal-article` and `monograph` to `book`. Missing types with both a journal and DOI default to `journal-article`; selected review venues infer `review` for missing or generic article types. Venue inference is a heuristic, and explicit specialized types such as `editorial` or `correction` are preserved. Existing records are not rewritten by an audit or search.
 - `setup` is the environment check and setup wizard entrypoint.
 - `insights` analyzes research behavior such as hot keywords and reading trends.
 - `metrics` shows LLM token and runtime usage.

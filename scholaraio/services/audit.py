@@ -21,7 +21,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from scholaraio.stores.papers import is_scrubbed, iter_paper_dirs
+from scholaraio.stores.papers import is_scrubbed, iter_paper_dirs, normalize_paper_type
 
 _log = logging.getLogger("scholaraio.audit")
 
@@ -29,11 +29,9 @@ _PLACEHOLDER_TITLES = {"introduction", "tldr", "overview", "summary"}
 _SUSPICIOUS_AUTHOR_VALUES = {"unknown", "anonymous", "contributor", "contributors"}
 _DIRNAME_YEAR_PLACEHOLDER = re.compile(r"(^|-)XXXX(-|$)")
 _AUTHOR_YEAR_TITLE_PATTERN = re.compile(r"^(.+?)-(\d{4})-(.+)$")
-_DOI_EXPECTED_TYPES = frozenset(
-    {"journal-article", "article", "journalarticle", "proceedings-article", "posted-content"}
-)
-_JOURNAL_EXPECTED_TYPES = frozenset({"journal-article", "article", "journalarticle", "proceedings-article"})
-_ABSTRACT_OPTIONAL_TYPES = frozenset({"book", "book-chapter", "monograph"})
+_DOI_EXPECTED_TYPES = frozenset({"journal-article", "review", "conference-paper", "posted-content"})
+_JOURNAL_EXPECTED_TYPES = frozenset({"journal-article", "review", "conference-paper"})
+_ABSTRACT_OPTIONAL_TYPES = frozenset({"book", "book-chapter"})
 _ABSTRACT_OPTIONAL_TITLE_PREFIXES = ("erratum", "book review")
 _NO_ABSTRACT_MARKERS = frozenset({"[no abstract]", "[no abstract available]"})
 _TITLE_MISMATCH_SKIP_TYPES = frozenset(
@@ -48,7 +46,6 @@ _TITLE_MISMATCH_SKIP_TYPES = frozenset(
         "lecture-notes",
         "manual",
         "meeting-notes",
-        "monograph",
         "patent",
         "presentation",
         "reference-book",
@@ -110,6 +107,9 @@ def audit_papers(papers_dir: Path) -> list[Issue]:
 
         # -- Missing fields --
         _check_missing(issues, pid, data, has_md=has_md)
+
+        # -- Canonical metadata values --
+        _check_paper_type(issues, pid, data)
 
         # -- File pairing --
         if not has_md:
@@ -214,7 +214,7 @@ def _check_missing(issues: list[Issue], pid: str, data: dict, *, has_md: bool) -
     """Check for missing critical fields."""
     from scholaraio.services.ingest_metadata._doc_extract import DOCUMENT_TYPES
 
-    paper_type = _normalized_paper_type(data.get("paper_type"))
+    paper_type = normalize_paper_type(data.get("paper_type"), data.get("journal"), data.get("doi"))
     if not data.get("doi") and (not paper_type or paper_type in _DOI_EXPECTED_TYPES):
         issues.append(Issue(pid, "warning", "missing_doi", "Missing DOI"))
     if (
@@ -233,6 +233,21 @@ def _check_missing(issues: list[Issue], pid: str, data: dict, *, has_md: bool) -
         issues.append(Issue(pid, "warning", "missing_journal", "Missing journal name"))
     if not data.get("title"):
         issues.append(Issue(pid, "error", "missing_title", "Missing title"))
+
+
+def _check_paper_type(issues: list[Issue], pid: str, data: dict) -> None:
+    """Report aliases and venue-derived review types that need normalization."""
+    raw = str(data.get("paper_type") or "").strip()
+    canonical = normalize_paper_type(raw, data.get("journal"), data.get("doi"))
+    if canonical and canonical != raw:
+        issues.append(
+            Issue(
+                pid,
+                "warning",
+                "noncanonical_paper_type",
+                f"Paper type {raw or '<missing>'!r} should be {canonical!r}",
+            )
+        )
 
 
 def _is_garbled_title(title: str) -> bool:
@@ -318,7 +333,7 @@ def _check_content_consistency(
 
     # Title vs first H1 mismatch
     title_variants = _title_variants(data)
-    paper_type = _normalized_paper_type(data.get("paper_type"))
+    paper_type = normalize_paper_type(data.get("paper_type"), data.get("journal"), data.get("doi"))
     if title_variants and paper_type not in _TITLE_MISMATCH_SKIP_TYPES:
         md_title, overlap, matched_title = _best_title_match(md_text, title_variants)
         if md_title and overlap < 0.3:
@@ -353,10 +368,6 @@ def _check_filename(issues: list[Issue], pid: str, data: dict) -> None:
                 f"Directory year ({file_year}) does not match JSON year ({json_year})",
             )
         )
-
-
-def _normalized_paper_type(paper_type: object) -> str:
-    return str(paper_type or "").strip().lower()
 
 
 def _has_available_abstract(data: dict) -> bool:

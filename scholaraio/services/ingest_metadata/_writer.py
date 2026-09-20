@@ -30,6 +30,8 @@ def metadata_to_dict(meta: PaperMetadata) -> dict:
     Returns:
         JSON 可序列化的字典。
     """
+    from scholaraio.stores.papers import normalize_paper_type
+
     d: dict = {
         "id": meta.id,
         "title": meta.title,
@@ -40,7 +42,7 @@ def metadata_to_dict(meta: PaperMetadata) -> dict:
         "doi": meta.doi,
         "journal": meta.journal,
         "abstract": meta.abstract,
-        "paper_type": meta.paper_type,
+        "paper_type": normalize_paper_type(meta.paper_type, meta.journal, meta.doi),
         "volume": meta.volume,
         "issue": meta.issue,
         "pages": meta.pages,

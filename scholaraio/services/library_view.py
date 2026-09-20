@@ -135,7 +135,7 @@ def _main_row(paper_dir: Path, meta: dict, issues: list[dict]) -> dict:
         "year": meta.get("year") or "",
         "journal": meta.get("journal") or "",
         "doi": meta.get("doi") or "",
-        "paper_type": normalize_paper_type(raw_type),
+        "paper_type": normalize_paper_type(raw_type, meta.get("journal"), meta.get("doi")),
         "paper_type_raw": raw_type,
         "citation_count": best_citation(meta),
         "has_md": md_file.exists(),

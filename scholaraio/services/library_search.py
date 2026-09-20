@@ -109,7 +109,9 @@ def _matches_filters(meta: dict, filters: LibrarySearchFilters) -> bool:
         return False
     if filters.journal and not _contains(meta.get("journal") or meta.get("source"), filters.journal):
         return False
-    if filters.paper_type and normalize_paper_type(meta.get("paper_type")) != normalize_paper_type(filters.paper_type):
+    if filters.paper_type and normalize_paper_type(
+        meta.get("paper_type"), meta.get("journal"), meta.get("doi")
+    ) != normalize_paper_type(filters.paper_type):
         return False
     if filters.doi and not _contains(meta.get("doi"), filters.doi):
         return False
