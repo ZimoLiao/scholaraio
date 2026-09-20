@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import shutil
+from collections.abc import Iterable
 from pathlib import Path
 
 from scholaraio.core.config import Config
@@ -37,6 +38,7 @@ def batch_convert_pdfs(
     cfg: Config,
     *,
     enrich: bool = False,
+    paper_dirs: Iterable[Path] | None = None,
 ) -> dict[str, int]:
     """批量转换已入库论文的 PDF 为 paper.md，可选 enrich。
 
@@ -48,6 +50,8 @@ def batch_convert_pdfs(
     Args:
         cfg: 全局配置。
         enrich: 转换后是否运行 toc + l3 + abstract backfill。
+        paper_dirs: Optional subset of paper directories to scan.  The default
+            scans the whole configured library.
 
     Returns:
         统计字典 ``{"converted": N, "failed": N, "skipped": N}``。
@@ -56,7 +60,10 @@ def batch_convert_pdfs(
 
     # Collect papers with PDF but no paper.md
     to_convert: list[tuple[Path, Path]] = []  # (paper_dir, pdf_path)
-    for pdir in iter_paper_dirs(cfg.papers_dir):
+    candidates = iter_paper_dirs(cfg.papers_dir) if paper_dirs is None else sorted(set(paper_dirs))
+    for pdir in candidates:
+        if not (pdir / "meta.json").exists():
+            continue
         if (pdir / "paper.md").exists():
             continue
         pdfs = list(pdir.glob("*.pdf"))

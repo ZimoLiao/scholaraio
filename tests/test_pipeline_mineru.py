@@ -300,6 +300,56 @@ def test_batch_convert_pdfs_falls_back_without_cloud_key(tmp_path, monkeypatch):
     assert (paper_dir / "paper.md").read_text(encoding="utf-8") == "fallback batch ok\n"
 
 
+def test_batch_convert_pdfs_can_limit_conversion_to_selected_paper_dirs(tmp_path, monkeypatch):
+    selected_dir = tmp_path / "papers" / "Selected-2023-Test"
+    excluded_dir = tmp_path / "papers" / "Excluded-2023-Test"
+    for paper_dir in (selected_dir, excluded_dir):
+        paper_dir.mkdir(parents=True)
+        (paper_dir / "meta.json").write_text("{}", encoding="utf-8")
+        (paper_dir / "paper.pdf").write_bytes(b"%PDF-1.4\n")
+
+    cfg = Config()
+    cfg._root = tmp_path
+    cfg.paths.papers_dir = "papers"
+    monkeypatch.setattr(cfg, "resolved_mineru_api_key", lambda: "")
+
+    import scholaraio.providers.mineru as mineru
+    import scholaraio.providers.pdf_fallback as pdf_fallback
+    import scholaraio.services.ingest.pipeline as pipeline
+
+    monkeypatch.setattr(mineru, "check_server", lambda *_: False)
+    monkeypatch.setattr(pipeline, "_batch_postprocess", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        pdf_fallback,
+        "convert_pdf_with_fallback",
+        lambda _pdf, md_path, **_kwargs: (
+            md_path.write_text("selected only\n", encoding="utf-8"),
+            True,
+            "docling",
+            None,
+        )[1:],
+    )
+
+    stats = batch_convert_pdfs(cfg, enrich=False, paper_dirs=[selected_dir])
+
+    assert stats == {"converted": 1, "failed": 0, "skipped": 0}
+    assert (selected_dir / "paper.md").read_text(encoding="utf-8") == "selected only\n"
+    assert not (excluded_dir / "paper.md").exists()
+
+
+def test_batch_convert_pdfs_empty_selection_does_not_scan_library(tmp_path):
+    paper_dir = tmp_path / "papers" / "Excluded"
+    paper_dir.mkdir(parents=True)
+    (paper_dir / "meta.json").write_text("{}", encoding="utf-8")
+    (paper_dir / "paper.pdf").write_bytes(b"%PDF-1.4\n")
+    cfg = Config()
+    cfg._root = tmp_path
+    cfg.paths.papers_dir = "papers"
+
+    assert batch_convert_pdfs(cfg, paper_dirs=[]) == {"converted": 0, "failed": 0, "skipped": 0}
+    assert not (paper_dir / "paper.md").exists()
+
+
 def test_batch_convert_pdfs_fallback_renames_noncanonical_source_pdf(tmp_path, monkeypatch):
     paper_dir = tmp_path / "papers" / "Smith-2023-Test"
     paper_dir.mkdir(parents=True)
