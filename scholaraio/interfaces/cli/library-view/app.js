@@ -84,12 +84,12 @@ const els = {
   yearFromFilter: document.getElementById("year-from-filter"),
   yearToFilter: document.getElementById("year-to-filter"),
   journalFilter: document.getElementById("journal-filter"),
-  doiFilter: document.getElementById("doi-filter"),
   typeFilter: document.getElementById("type-filter"),
   volumeFilter: document.getElementById("volume-filter"),
   volumeFilterLabel: document.getElementById("volume-filter-label"),
   refreshButton: document.getElementById("refresh-button"),
   detailTitle: document.getElementById("detail-title"),
+  detailCitation: document.getElementById("detail-citation"),
   detailActions: document.getElementById("detail-actions"),
   copyBibtexButton: document.getElementById("copy-bibtex-button"),
   previewPdfButton: document.getElementById("preview-pdf-button"),
@@ -258,7 +258,6 @@ function syncFiltersFromControls() {
   state.filters.yearFrom = els.yearFromFilter.value.trim();
   state.filters.yearTo = els.yearToFilter.value.trim();
   state.filters.journal = els.journalFilter.value.trim();
-  state.filters.doi = els.doiFilter.value.trim();
   state.filters.type = els.typeFilter.value;
   state.filters.volume = els.volumeFilter.value;
 }
@@ -279,6 +278,7 @@ function activeFilterTotal() {
 
 function renderActiveFilterCount() {
   const total = activeFilterTotal();
+  els.activeFilterCount.hidden = !total;
   els.activeFilterCount.textContent = total ? `${total} active filter${total === 1 ? "" : "s"}` : "No active filters";
 }
 
@@ -317,6 +317,7 @@ function setSearchDiagnostics(kind, message, actions = []) {
   const commands = (actions || []).map((action) => action.command).filter(Boolean);
   els.searchDiagnostics.dataset.kind = kind;
   els.searchDiagnostics.textContent = [message, ...commands].filter(Boolean).join(" • ");
+  els.searchDiagnostics.hidden = !els.searchDiagnostics.textContent;
 }
 
 function updateSearchModeUi() {
@@ -335,9 +336,9 @@ function updateSearchModeUi() {
   els.searchInput.placeholder =
     state.searchMode === "metadata" ? "Search library metadata" : `Enter a ${state.searchMode} search query`;
   if (proceedings) {
-    setSearchDiagnostics("info", "Proceedings currently supports Metadata search and structured filters.");
+    setSearchDiagnostics("info", "");
   } else if (state.searchMode === "metadata") {
-    setSearchDiagnostics("info", "Metadata filters apply across the whole library.");
+    setSearchDiagnostics("info", "");
   }
 }
 
@@ -360,7 +361,9 @@ function renderMetrics() {
   refreshError.textContent = payload?.refresh_error || "";
   refreshError.hidden = !payload?.refresh_error;
   const root = payload?.root || "";
-  els.sourceTitle.textContent = state.tab === "main" ? "Main Papers" : "Proceedings";
+  els.sourceTitle.textContent = state.tab === "main" ? "Library" : "Proceedings";
+  document.getElementById("records-kicker").textContent = state.tab === "main" ? "Main library" : "Proceedings";
+  document.getElementById("records-title").textContent = state.tab === "main" ? "All papers" : "All proceedings";
   els.sourceRoot.textContent = root || "--";
   els.sourceRoot.title = root;
   els.sourceCopyButton.disabled = !root;
@@ -412,7 +415,7 @@ async function runRankedSearch() {
   }
   if (state.searchMode === "metadata") {
     state.ranked = null;
-    setSearchDiagnostics("info", "Metadata filters apply across the whole library.");
+    setSearchDiagnostics("info", "");
     renderTableAndReconcileSelection();
     return;
   }
@@ -507,7 +510,6 @@ function clearAllFilters() {
     els.yearFromFilter,
     els.yearToFilter,
     els.journalFilter,
-    els.doiFilter,
     els.typeFilter,
     els.volumeFilter,
   ]) {
@@ -541,7 +543,7 @@ function renderTable() {
   els.tableCount.textContent = state.ranked ? `${rows.length} ranked result${rows.length === 1 ? "" : "s"}` : `${rows.length} shown`;
   const payload = activePayload();
   if (payload?.matched !== undefined) {
-    els.tableCount.textContent = `${payload.matched ? payload.offset + 1 : 0}–${payload.offset + rows.length} / ${payload.matched}`;
+    els.tableCount.textContent = `${payload.matched ? payload.offset + 1 : 0}–${payload.offset + rows.length} of ${payload.matched.toLocaleString()}`;
     document.getElementById("page-previous").disabled = payload.offset === 0;
     document.getElementById("page-next").disabled = payload.offset + rows.length >= payload.matched;
   }
@@ -557,6 +559,12 @@ function renderTable() {
     title.className = "paper-title";
     title.textContent = text(row.title);
     titleWrap.appendChild(title);
+    if (row.journal || row.proceeding_title) {
+      const source = document.createElement("div");
+      source.className = "paper-source";
+      source.textContent = row.journal || row.proceeding_title;
+      titleWrap.appendChild(source);
+    }
     const ranking = rankingFor(row.paper_id);
     if (ranking) {
       const relevance = document.createElement("div");
@@ -568,9 +576,15 @@ function renderTable() {
     titleCell.appendChild(titleWrap);
     tr.appendChild(titleCell);
 
-    for (const value of [row.authors_text, row.year, row.paper_type]) {
+    for (const [index, value] of [row.authors_text, row.year, row.paper_type].entries()) {
       const td = document.createElement("td");
-      td.textContent = text(value);
+      const content = document.createElement("div");
+      content.textContent = text(value);
+      if (index === 0) {
+        content.className = "authors-preview";
+        content.title = text(value);
+      }
+      td.appendChild(content);
       tr.appendChild(td);
     }
 
@@ -630,31 +644,28 @@ function renderTableAndReconcileSelection() {
 function renderMetadata(detail) {
   els.metadataGrid.textContent = "";
   const pairs = [
-    ["Directory", detail.dir_name],
     ["Authors", detail.authors_text],
     ["Year", detail.year],
-    ["Type", detail.paper_type],
     ["Journal", detail.journal],
     ["DOI", detail.doi],
   ];
   if (state.tab === "proceedings") pairs.splice(2, 0, ["Volume", detail.proceeding_title]);
   for (const [label, value] of pairs) {
+    if (value == null || !String(value).trim()) continue;
     const dt = document.createElement("dt");
     dt.textContent = label;
     const dd = document.createElement("dd");
     dd.textContent = text(value);
     els.metadataGrid.append(dt, dd);
   }
+  document.getElementById("metadata-section").hidden = !els.metadataGrid.children.length;
 }
 
 function renderIssues(detail) {
   els.issueList.textContent = "";
   const issues = detail.issues || [];
+  document.getElementById("quality-section").hidden = !issues.length;
   if (!issues.length) {
-    const empty = document.createElement("div");
-    empty.className = "pill ok";
-    empty.textContent = "No audit issues";
-    els.issueList.appendChild(empty);
     return;
   }
   for (const issue of issues) {
@@ -674,11 +685,8 @@ function renderIssues(detail) {
 function renderToc(detail) {
   els.tocList.textContent = "";
   const toc = detail.toc || [];
+  document.getElementById("toc-section").hidden = !toc.length;
   if (!toc.length) {
-    const empty = document.createElement("div");
-    empty.className = "pill";
-    empty.textContent = "No TOC";
-    els.tocList.appendChild(empty);
     return;
   }
   for (const entry of toc) {
@@ -876,6 +884,9 @@ function schedulePdfSyncPolling(detail) {
 }
 
 function renderDetail(detail) {
+  for (const [section, value] of [["abstract", detail?.abstract], ["conclusion", detail?.l3_conclusion]]) {
+    document.getElementById(`${section}-section`).hidden = !String(value ?? "").trim();
+  }
   if (detail && state.detail) {
     const { pdf_sync: previousSync, audit: previousAudit, ...previousContent } = state.detail;
     const { pdf_sync: nextSync, audit: nextAudit, ...nextContent } = detail;
@@ -886,9 +897,13 @@ function renderDetail(detail) {
     }
   }
   if (!detail) {
+    for (const section of ["metadata", "quality", "toc"]) {
+      document.getElementById(`${section}-section`).hidden = true;
+    }
     closePdfRecovery();
     state.detail = null;
     els.detailTitle.textContent = "Select a record";
+    els.detailCitation.textContent = "";
     els.metadataGrid.textContent = "";
     els.issueList.textContent = "";
     els.detailAbstract.textContent = "--";
@@ -901,6 +916,7 @@ function renderDetail(detail) {
   }
   state.detail = detail;
   els.detailTitle.textContent = text(detail.title);
+  els.detailCitation.textContent = [detail.authors_text, detail.year].filter(Boolean).join(" · ");
   renderMetadata(detail);
   renderIssues(detail);
   renderMarkdown(els.detailAbstract, detail.abstract);
@@ -1228,7 +1244,6 @@ function bindEvents() {
     els.yearFromFilter,
     els.yearToFilter,
     els.journalFilter,
-    els.doiFilter,
   ]) {
     input.addEventListener("input", () => {
       syncFiltersFromControls();

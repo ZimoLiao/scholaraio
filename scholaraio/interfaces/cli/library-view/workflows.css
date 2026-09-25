@@ -2,14 +2,27 @@
 
 .filter-heading-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding-bottom: 4px;
+  margin: 18px 0 2px;
 }
 
-.filter-title {
-  margin-top: 4px;
+.filter-heading-row h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.clear-button {
+  border: 0;
+  padding: 0;
+  color: var(--text);
+  background: transparent;
+  cursor: pointer;
+  font-size: 11px;
 }
 
 .search-query-row {
@@ -22,11 +35,11 @@
 .action-button {
   appearance: none;
   border: 1px solid var(--line-strong);
-  border-radius: 7px;
+  border-radius: 9px;
   color: var(--text);
   background: rgba(255, 255, 255, 0.88);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 650;
   transition: border-color 120ms ease, background 120ms ease, color 120ms ease, transform 120ms ease;
 }
@@ -87,7 +100,7 @@
 
 .filter-divider {
   height: 1px;
-  margin: 3px 0;
+  margin: 16px 0 3px;
   background: var(--line);
 }
 
@@ -99,7 +112,7 @@
 
 .year-filter-grid label {
   display: grid;
-  gap: 6px;
+  gap: 0;
 }
 
 .active-filter-count {
@@ -113,14 +126,15 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 summary:focus-visible {
-  outline: 2px solid rgba(93, 143, 223, 0.78);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 .detail-actions {
   display: grid;
-  grid-template-columns: minmax(96px, 0.8fr) minmax(168px, 1.4fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 7px;
+  margin: 15px 0;
 }
 
 .action-button {
@@ -220,8 +234,9 @@ summary:focus-visible {
 #records-toolbar-title {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
 }
 
 #pdf-recovery-button {

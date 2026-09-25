@@ -48,6 +48,31 @@ def test_real_browser_preserves_dragged_selection_and_resumes_updates(tmp_path):
             page.goto(f"http://127.0.0.1:{server.server_port}")
             title = page.locator("#detail-title")
             expect(title).to_have_text("Selection should survive automatic refresh")
+            expect(page.locator("#metadata-grid dt")).to_have_text(["Authors", "Year"])
+            expect(page.locator("#doi-filter")).to_have_count(0)
+            expect(page.locator("#abstract-section")).to_be_visible()
+            expect(page.locator("#conclusion-section")).to_be_hidden()
+            expect(page.locator("#toc-section")).to_be_hidden()
+            assert (
+                page.locator("#title-filter").evaluate("el => getComputedStyle(el, '::placeholder').fontWeight")
+                == "400"
+            )
+            assert page.locator(".topbar").evaluate("el => getComputedStyle(el).height") == "66px"
+            assert page.locator(".detail-card").evaluate("el => getComputedStyle(el).padding") == "21px"
+            assert page.locator("#detail-title").evaluate("el => getComputedStyle(el).fontSize") == "23px"
+            assert "−" in page.locator("#abstract-section summary").evaluate(
+                "el => getComputedStyle(el, '::after').content"
+            )
+            assert page.locator("#abstract-section").evaluate("el => getComputedStyle(el).borderTopStyle") == "solid"
+            for selector in ["#metadata-grid dt", "#metadata-grid dd"]:
+                assert page.locator(selector).first.evaluate("el => getComputedStyle(el).fontSize") == page.locator(
+                    "#detail-abstract"
+                ).evaluate("el => getComputedStyle(el).fontSize")
+            page.locator("#copy-bibtex-button").click()
+            expect(page.locator("#toast")).to_be_visible()
+            copied = page.evaluate("navigator.clipboard.readText()")
+            assert "Selection should survive automatic refresh" in copied
+            assert "abstract" not in copied
             box = title.bounding_box()
             assert box is not None
             page.mouse.move(box["x"] + 2, box["y"] + 10)
@@ -70,6 +95,10 @@ def test_real_browser_preserves_dragged_selection_and_resumes_updates(tmp_path):
             with page.expect_response(lambda response: "/api/main/detail" in response.url):
                 page.locator("#refresh-button").click()
             assert page.evaluate("savedTitleNode === document.querySelector('#detail-title').firstChild")
+            update_meta(paper, abstract="", journal="Journal of Tests", doi="10.1234/test")
+            page.locator("#refresh-button").click()
+            expect(page.locator("#metadata-grid dt")).to_have_text(["Authors", "Year", "Journal", "DOI"])
+            expect(page.locator("#abstract-section")).to_be_hidden()
             assert errors == []
             browser.close()
     finally:
@@ -116,27 +145,27 @@ def test_real_browser_pages_and_filters_across_the_library(tmp_path):
             errors = []
             page.on("pageerror", lambda error: errors.append(str(error)))
             page.goto(f"http://127.0.0.1:{server.server_port}")
-            expect(page.locator("#table-count")).to_have_text("1–100 / 205")
+            expect(page.locator("#table-count")).to_have_text("1–100 of 205")
             expect(page.locator("#paper-table-body tr")).to_have_count(100)
             # A new type outside the current page must still update global facets.
             added = cfg.papers_dir / "book"
             added.mkdir()
             write_meta(added, {"id": "book", "title": "New book", "year": 2000, "paper_type": "book"})
             page.locator("#refresh-button").click()
-            expect(page.locator("#table-count")).to_have_text("1–100 / 206")
+            expect(page.locator("#table-count")).to_have_text("1–100 of 206")
             expect(page.locator('#type-filter option[value="book"]')).to_have_count(1)
             page.locator("#type-filter").select_option("journal-article")
-            expect(page.locator("#table-count")).to_have_text("1–100 / 205")
+            expect(page.locator("#table-count")).to_have_text("1–100 of 205")
             page.locator("#refresh-button").click()
             expect(page.locator("#type-filter")).to_have_value("journal-article")
             page.locator("#page-next").click()
-            expect(page.locator("#table-count")).to_have_text("101–200 / 205")
+            expect(page.locator("#table-count")).to_have_text("101–200 of 205")
             page.locator("#title-filter").fill("Paper 204")
-            expect(page.locator("#table-count")).to_have_text("1–1 / 1")
+            expect(page.locator("#table-count")).to_have_text("1–1 of 1")
             expect(page.locator("#detail-title")).to_have_text("Paper 204")
             page.locator("#clear-filters-button").click()
             page.locator("#tab-proceedings").click()
-            expect(page.locator("#table-count")).to_have_text("1–1 / 1")
+            expect(page.locator("#table-count")).to_have_text("1–1 of 1")
             expect(page.locator("#detail-title")).to_have_text("Proceedings test paper")
             assert errors == []
             browser.close()
@@ -182,7 +211,7 @@ def test_real_browser_resolves_inspected_pdf_versions(tmp_path):
             expect(page.locator("#pdf-recovery-panel")).to_be_visible()
             page.locator("#tab-proceedings").click()
             expect(page.locator("#pdf-recovery-panel")).to_be_hidden()
-            expect(page.locator("#table-count")).to_have_text("0–0 / 0")
+            expect(page.locator("#table-count")).to_have_text("0–0 of 0")
             with page.expect_response(lambda response: "/api/proceedings/papers" in response.url, timeout=5000):
                 page.wait_for_timeout(2600)
             page.locator("#tab-main").click()

@@ -122,7 +122,7 @@ scholaraio migrate finalize --migration-id <id> --confirm
 - `migrate finalize` remains available when a user or operator has already run store-level migration steps manually and only needs final cleanup and verification.
 
 - `import-endnote` and `import-zotero` bring existing libraries into ScholarAIO.
-- `export` handles BibTeX, RIS, Markdown, and DOCX export.
+- `export` handles BibTeX, RIS, Markdown, and DOCX export. BibTeX exports and WebUI Copy BibTeX omit abstracts; stored metadata and RIS abstracts are unchanged.
 - `publish-site` generates a static site from audited `published/*/metadata.json` archives, copying PDF/source assets by default and supporting `--symlink` for local preview.
 - `pdf-recovery inspect|export|resolve` reviews retained PDF versions and resolves conflicts with snapshot validation. See the [Library WebUI guide](library-webui.md#paged-browsing-and-explicit-pdf-recovery).
 - `gui` starts a local, metadata-read-only WebUI with live refresh, audit status, Markdown-rendered abstracts/conclusions, composable metadata filters, server-backed Keyword/Semantic/Unified retrieval for the main library, canonical per-record BibTeX copy, inline PDF preview, and a loopback-only action for opening PDFs in the operating system's default viewer. On WSL, that action uses a stable Windows edit mirror and automatically reconciles valid PDF saves back to the canonical library copy. The WebUI serves only packaged local assets and does not load remote runtime scripts. See the [Library WebUI guide](library-webui.md).

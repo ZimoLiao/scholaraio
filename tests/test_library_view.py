@@ -677,7 +677,7 @@ def test_main_library_bibtex_uses_canonical_full_metadata(tmp_path: Path) -> Non
     assert "title = {{Canonical \\& complete}}" in bibtex
     assert "author = {Jane Doe and Pat Roe}" in bibtex
     assert "doi = {10.1000/test}" in bibtex
-    assert "abstract = {{Abstract text.}}" in bibtex
+    assert "abstract =" not in bibtex
     with pytest.raises(KeyError):
         get_main_paper_bibtex(cfg, "missing-paper")
 

@@ -11,12 +11,13 @@
   <main class="shell">
     <header class="topbar">
       <div class="brand-block">
-        <div class="status-dot" id="connection-dot"></div>
+        <div class="brand-mark" aria-hidden="true">S</div>
         <div>
-          <h1>ScholarAIO Library</h1>
+          <h1>ScholarAIO</h1>
           <div class="topline">
+            <span class="status-dot" id="connection-dot"></span>
             <span id="connection-label">Connecting</span>
-            <span class="divider"></span>
+            <span class="divider" aria-hidden="true"></span>
             <span id="updated-at">--</span>
           </div>
         </div>
@@ -25,32 +26,27 @@
         <button class="tab is-active" id="tab-main" data-tab="main" type="button">Main Papers</button>
         <button class="tab" id="tab-proceedings" data-tab="proceedings" type="button">Proceedings</button>
       </nav>
+      <button class="header-refresh" id="refresh-button" type="button" aria-label="Refresh library" title="Refresh">↻</button>
     </header>
 
     <section class="workspace">
       <aside class="filter-panel">
-        <section class="monitor-card">
-          <div class="monitor-card-header">
-            <div class="monitor-title" id="source-title">Main Papers</div>
-            <div class="source-root-row">
+        <section class="monitor-card filter-card" aria-labelledby="search-heading">
+          <div class="library-summary">
+            <div>
+              <div class="monitor-kicker" id="source-title">Library</div>
+              <div class="metric-label">papers</div>
+            </div>
+            <div class="metric-value" id="metric-total">--</div>
+            <div class="source-root-row" hidden>
               <div class="monitor-subtitle" id="source-root">--</div>
               <button class="soft-button compact-button" id="source-copy-button" type="button">Copy</button>
             </div>
           </div>
-          <div class="metric-list">
-            <div class="metric-row">
-              <span class="metric-label">Records</span>
-              <span class="metric-value" id="metric-total">--</span>
-            </div>
-          </div>
-        </section>
 
-        <section class="monitor-card filter-card" aria-labelledby="search-heading">
           <div class="filter-heading-row">
-            <div>
-              <div class="monitor-title filter-title" id="search-heading">Search &amp; filter</div>
-            </div>
-            <button class="soft-button compact-button" id="clear-filters-button" type="button">Clear all</button>
+            <h2 id="search-heading">Find papers</h2>
+            <button class="clear-button" id="clear-filters-button" type="button">Clear</button>
           </div>
 
           <label class="field-label" for="search-mode">Search mode</label>
@@ -66,9 +62,7 @@
             <input class="text-input" id="search-input" type="search" autocomplete="off" placeholder="Search this library">
             <button class="primary-button" id="search-button" type="button" hidden>Search</button>
           </div>
-          <div class="search-diagnostics" id="search-diagnostics" role="status" aria-live="polite">
-            Metadata filters apply across the whole library.
-          </div>
+          <div class="search-diagnostics" id="search-diagnostics" role="status" aria-live="polite" hidden></div>
 
           <div class="search-diagnostics" id="library-refresh-error" data-kind="error" role="status" aria-live="polite" hidden></div>
 
@@ -94,9 +88,6 @@
           <label class="field-label" for="journal-filter">Journal / source</label>
           <input class="text-input" id="journal-filter" type="search" autocomplete="off" placeholder="Journal or proceedings">
 
-          <label class="field-label" for="doi-filter">DOI</label>
-          <input class="text-input" id="doi-filter" type="search" autocomplete="off" placeholder="10.xxxx/...">
-
           <label class="field-label" for="type-filter">Type</label>
           <select class="select-input" id="type-filter">
             <option value="">All types</option>
@@ -114,9 +105,15 @@
       <section class="table-panel" id="table-panel">
         <div class="table-toolbar">
           <div id="records-toolbar-title">
-            <div class="table-count" id="table-count">--</div>
-            <button class="soft-button compact-button" id="page-previous" type="button" disabled>Previous</button>
-            <button class="soft-button compact-button" id="page-next" type="button" disabled>Next</button>
+            <div class="records-heading">
+              <div class="monitor-kicker" id="records-kicker">Main library</div>
+              <div class="records-title" id="records-title">All papers</div>
+            </div>
+            <div class="record-tools">
+              <div class="table-count" id="table-count">--</div>
+              <button class="page-button" id="page-previous" type="button" aria-label="Previous page" disabled>‹</button>
+              <button class="page-button" id="page-next" type="button" aria-label="Next page" disabled>›</button>
+            </div>
           </div>
           <div class="pdf-toolbar-title" id="pdf-toolbar-title" hidden>
             <button class="soft-button" id="pdf-back-button" type="button">Back to records</button>
@@ -126,7 +123,6 @@
               <div class="table-count" id="pdf-title">--</div>
             </div>
           </div>
-          <button class="soft-button" id="refresh-button" type="button">Refresh</button>
         </div>
         <div class="table-wrap" id="records-view">
           <table>
@@ -150,14 +146,15 @@
 
       <aside class="detail-panel">
         <section class="monitor-card detail-card">
-          <div class="monitor-card-header">
-            <div class="monitor-title" id="detail-title">Select a record</div>
+          <div class="detail-hero">
+            <h2 id="detail-title">Select a record</h2>
+            <p id="detail-citation"></p>
           </div>
 
           <div class="detail-actions" id="detail-actions" hidden>
-            <button class="action-button action-button-primary" id="copy-bibtex-button" type="button">Copy BibTeX</button>
+            <button class="action-button action-button-primary" id="native-pdf-button" type="button">Open in default viewer</button>
             <button class="action-button" id="preview-pdf-button" type="button">Read in browser</button>
-            <button class="action-button" id="native-pdf-button" type="button">Open in default viewer</button>
+            <button class="action-button" id="copy-bibtex-button" type="button">Copy BibTeX</button>
           </div>
           <div class="pdf-sync-status" id="pdf-sync-status" role="status" aria-live="polite" hidden></div>
 
@@ -171,27 +168,26 @@
             <div id="pdf-recovery-message" role="status"></div>
           </section>
 
-          <div class="detail-section">
-            <div class="section-title">Metadata</div>
+          <div class="detail-section" id="metadata-section" hidden>
             <dl class="metadata-grid" id="metadata-grid"></dl>
           </div>
 
-          <details class="detail-section" open>
+          <details class="detail-section" id="abstract-section" open hidden>
             <summary class="section-title">Abstract</summary>
             <div class="detail-text markdown-body" id="detail-abstract">--</div>
           </details>
 
-          <details class="detail-section">
+          <details class="detail-section" id="conclusion-section" hidden>
             <summary class="section-title">Conclusion</summary>
             <div class="detail-text markdown-body" id="detail-conclusion">--</div>
           </details>
 
-          <details class="detail-section">
+          <details class="detail-section" id="toc-section" hidden>
             <summary class="section-title">TOC</summary>
             <div class="toc-list" id="toc-list"></div>
           </details>
 
-          <div class="detail-section">
+          <div class="detail-section" id="quality-section" hidden>
             <div class="section-title">Quality</div>
             <div class="issue-list" id="issue-list"></div>
           </div>

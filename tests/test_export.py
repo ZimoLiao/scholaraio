@@ -12,6 +12,14 @@ from scholaraio.services.export import export_bibtex, meta_to_bibtex
 class TestMetaToBibtex:
     """Single-entry BibTeX conversion contract."""
 
+    def test_omits_abstract_without_changing_metadata(self):
+        meta = {"title": "A paper", "abstract": "Long abstract.", "doi": "10.1234/example"}
+        bib = meta_to_bibtex(meta)
+        assert "abstract" not in bib
+        assert "Long abstract." not in bib
+        assert "doi = {10.1234/example}" in bib
+        assert meta["abstract"] == "Long abstract."
+
     def test_journal_article_has_required_fields(self):
         meta = {
             "title": "Some Title",

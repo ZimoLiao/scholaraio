@@ -117,8 +117,6 @@ def meta_to_bibtex(meta: dict) -> str:
         fields.append(("issn", str(meta["issn"])))
     if meta.get("doi"):
         fields.append(("doi", str(meta["doi"])))
-    if meta.get("abstract"):
-        fields.append(("abstract", "{" + _bibtex_escape(meta["abstract"]) + "}"))
 
     lines = [f"@{entry_type}{{{key},"]
     for name, val in fields:
