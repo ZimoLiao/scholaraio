@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import sys
 import tempfile
@@ -15,13 +16,19 @@ from pathlib import Path
 def file_lock(path: Path, *, timeout: float = 30.0, create_parent: bool = False) -> Iterator[None]:
     """Lock a persistent sidecar, not the inode that atomic writes replace.
 
-    Keep the sidecar after release: unlinking it lets existing waiters and new
-    callers lock different inodes. All writers must use this advisory contract.
+    Store it beside the record's directory: Windows cannot rename a directory
+    containing an open lock handle. Keep the sidecar after release so existing
+    waiters and new callers cannot lock different inodes. All writers must use
+    this advisory contract.
     """
     path = Path(path).resolve()
     if create_parent:
         path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = path.with_name(f".{path.name}.lock")
+    if not path.parent.is_dir():
+        raise FileNotFoundError(f"Record directory no longer exists: {path.parent}")
+    identity = os.path.normcase(f"{path.parent.name}/{path.name}")
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    lock_path = path.parent.parent / f".scholaraio-{digest}.lock"
     with lock_path.open("a+b") as stream:
         if sys.platform == "win32":
             import msvcrt
