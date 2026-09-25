@@ -141,6 +141,7 @@ class LibraryCatalog:
                             {
                                 "severity": "warning",
                                 "code": "invalid_metadata_type",
+                                "rule": "invalid_metadata_type",
                                 "field": "id",
                                 "message": "id must be text",
                             },
@@ -153,11 +154,25 @@ class LibraryCatalog:
                     modified |= self.db.execute("DELETE FROM records WHERE path=?", (path,)).rowcount > 0
                     continue
 
-                def number(value: object) -> int:
+                def number(value: object, field: str, row: dict) -> int:
                     try:
-                        return int(str(value or "0"))
+                        result = int(str(value or "0"))
                     except ValueError:
                         return 0
+                    if -(2**63) <= result < 2**63:
+                        return result
+                    row[field] = 0
+                    row["issues"] = [
+                        *row.get("issues", []),
+                        {
+                            "code": "invalid_metadata_number",
+                            "rule": "invalid_metadata_number",
+                            "severity": "warning",
+                            "field": field,
+                            "message": f"{field} is outside the supported integer range",
+                        },
+                    ]
+                    return 0
 
                 for key in ("paper_id", "title", "authors_text", "journal", "doi", "paper_type", "proceeding_title"):
                     value = row.get(key, "")
@@ -167,12 +182,16 @@ class LibraryCatalog:
                             *row.get("issues", []),
                             {
                                 "code": "invalid_metadata_type",
+                                "rule": "invalid_metadata_type",
                                 "severity": "warning",
                                 "message": f"{key} must be text",
                                 "field": key,
                             },
                         ]
                         row["issue_counts"] = view._issue_counts(row["issues"])
+                year = number(row["year"], "year", row)
+                citation_count = number(row.get("citation_count"), "citation_count", row)
+                row["issue_counts"] = view._issue_counts(row["issues"])
                 payload = json.dumps(row, ensure_ascii=False, sort_keys=True)
                 previous = self.db.execute("SELECT payload FROM records WHERE path=?", (path,)).fetchone()
                 if previous is not None and previous[0] == payload:
@@ -185,12 +204,12 @@ class LibraryCatalog:
                         row["paper_id"],
                         row["title"],
                         row["authors_text"],
-                        number(row["year"]),
+                        year,
                         " ".join([str(row.get("journal") or ""), str(row.get("proceeding_title") or "")]),
                         row.get("doi", ""),
                         row["paper_type"],
                         row.get("proceeding_title", ""),
-                        number(row.get("citation_count")),
+                        citation_count,
                         " ".join(
                             str(row.get(key) or "")
                             for key in (

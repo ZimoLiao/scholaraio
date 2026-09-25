@@ -199,11 +199,11 @@ def _normalize_results(raw_results: list[dict], mode: str, candidates: dict[str,
                 "rank": rank,
                 "score": score,
                 "match": match_names.get(raw_match, raw_match),
-                "title": raw.get("title") or meta.get("title") or "",
-                "authors": raw.get("authors") or authors_text(meta.get("authors")),
-                "year": raw.get("year") or meta.get("year") or "",
-                "journal": raw.get("journal") or meta.get("journal") or "",
-                "dir_name": raw.get("dir_name") or candidate["dir_name"],
+                "title": meta.get("title") or "",
+                "authors": authors_text(meta.get("authors")),
+                "year": str(meta.get("year") or ""),
+                "journal": meta.get("journal") or "",
+                "dir_name": candidate["dir_name"],
             }
         )
         if len(results) >= limit:

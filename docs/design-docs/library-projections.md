@@ -29,7 +29,9 @@ so a subsequent query detects the need to rebuild again.
 A keyword build records its source root and manifest in `index_source`, commits
 schema and data changes in a single SQLite transaction, and rejects duplicate
 paper IDs and conflicting DOIs; constraint failures roll back every projection. Existing indexes remain usable; run `scholaraio index` once to enroll
-an older database in automatic refresh. After moving a library or restoring it
+an older database in automatic refresh. The keyword fingerprint tracks metadata
+and Markdown path/existence, excluding PDF bytes and Markdown contents; annotation
+saves do not rebuild the keyword projection. After moving a library or restoring it
 at another root, rebuild with the new configuration before querying it.
 
 Registry lookups used for identity repair deliberately retain their last known

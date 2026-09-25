@@ -384,3 +384,36 @@ def test_duplicate_doi_rebuild_rolls_back_every_projection(tmp_path):
     with sqlite3.connect(db) as conn:
         for table, rows in before.items():
             assert conn.execute(f"SELECT * FROM {table}").fetchall() == rows
+
+
+def test_pdf_and_markdown_saves_do_not_rebuild_metadata_index(tmp_path, monkeypatch):
+    from scholaraio.services import index
+    from scholaraio.stores.library_state import library_manifest
+
+    directory = tmp_path / "papers" / "one"
+    directory.mkdir(parents=True)
+    (directory / "meta.json").write_text(json.dumps({"id": "one", "title": "Evidence"}))
+    pdf, markdown = directory / "paper.pdf", directory / "paper.md"
+    pdf.write_bytes(b"pdf before")
+    markdown.write_text("before")
+    db = tmp_path / "index.db"
+    build_index(directory.parent, db)
+    builds = []
+    original = index.build_index
+
+    def rebuild(*args, **kwargs):
+        builds.append(True)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(index, "build_index", rebuild)
+    pdf.write_bytes(b"annotation save")
+    markdown.write_text("rewritten full text")
+    library_manifest(directory.parent, force=True)
+    assert search("Evidence", db)
+    assert builds == []
+    markdown.unlink()
+    library_manifest(directory.parent, force=True)
+    assert search("Evidence", db)
+    assert builds == [True]
+    with sqlite3.connect(db) as conn:
+        assert conn.execute("SELECT md_path FROM papers").fetchone() == ("",)

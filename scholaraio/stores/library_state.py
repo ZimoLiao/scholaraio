@@ -91,8 +91,22 @@ def library_manifest(root: Path, *, force: bool = False) -> Manifest:
     return result
 
 
-def manifest_digest(manifest: Manifest) -> str:
-    return hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
+def keyword_manifest_digest(manifest: Manifest) -> str:
+    """Fingerprint only inputs consumed by the metadata keyword projection.
+
+    PDF bytes and Markdown contents are separate resources. Only the Markdown
+    path/existence is stored in this index; full-text indexing has its own flow.
+    """
+    projected = {
+        path: [
+            (name, signature if name == "meta.json" else True)
+            for name, signature in entries
+            if name in {"meta.json", "paper.md"}
+        ]
+        for path, entries in manifest.items()
+        if any(name == "meta.json" for name, _signature in entries)
+    }
+    return hashlib.sha256(json.dumps(projected, sort_keys=True).encode()).hexdigest()
 
 
 _RECORDS: dict[Path, tuple[Manifest, dict[str, dict]]] = {}

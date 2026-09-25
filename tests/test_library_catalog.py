@@ -160,3 +160,23 @@ def test_malformed_metadata_field_does_not_break_whole_catalog(tmp_path, monkeyp
         assert any(issue["code"] == "invalid_metadata_type" for issue in bad["issues"])
     finally:
         catalog.close()
+
+
+@pytest.mark.parametrize("field", ["year", "citation_count"])
+def test_out_of_range_integer_is_a_row_warning(tmp_path, monkeypatch, field):
+    cfg = _build_config({}, tmp_path)
+    cfg.ensure_dirs()
+    for name, extra in [("good", {}), ("bad", {field: 10**100})]:
+        directory = cfg.papers_dir / name
+        directory.mkdir()
+        (directory / "meta.json").write_text(json.dumps({"id": name, "title": name, **extra}))
+    monkeypatch.setattr("scholaraio.services.library_view._background_issue_map", lambda *_: {})
+    catalog = LibraryCatalog(cfg, "main", background=False)
+    try:
+        page = catalog.page({})
+        assert page["total"] == 2
+        bad = next(row for row in page["papers"] if row["paper_id"] == "bad")
+        assert bad[field] == 0
+        assert any(issue["rule"] == "invalid_metadata_number" for issue in bad["issues"])
+    finally:
+        catalog.close()

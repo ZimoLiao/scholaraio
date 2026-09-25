@@ -163,9 +163,9 @@ def build_index(papers_dir: Path, db_path: Path, rebuild: bool = False) -> int:
 
     if not papers_dir.is_dir():
         raise FileNotFoundError(f"Library directory does not exist: {papers_dir}")
-    from scholaraio.stores.library_state import library_manifest, manifest_digest
+    from scholaraio.stores.library_state import keyword_manifest_digest, library_manifest
 
-    source_digest = manifest_digest(library_manifest(papers_dir, force=True))
+    source_digest = keyword_manifest_digest(library_manifest(papers_dir, force=True))
     conn = sqlite3.connect(db_path)
     try:
         conn.execute("PRAGMA journal_mode=WAL")
@@ -1183,7 +1183,7 @@ def ensure_index_current(db_path: Path, *, papers_dir: Path | None = None) -> No
     instead of pretending the old projection is current. Semantic indexes remain
     explicitly managed by the embedding command.
     """
-    from scholaraio.stores.library_state import library_manifest, manifest_digest
+    from scholaraio.stores.library_state import keyword_manifest_digest, library_manifest
 
     if not db_path.exists():
         return
@@ -1193,5 +1193,5 @@ def ensure_index_current(db_path: Path, *, papers_dir: Path | None = None) -> No
         source = conn.execute("SELECT root, digest FROM index_source").fetchone()
     if source:
         root = papers_dir.resolve() if papers_dir is not None else Path(source[0])
-        if str(root) != source[0] or manifest_digest(library_manifest(root)) != source[1]:
+        if str(root) != source[0] or keyword_manifest_digest(library_manifest(root)) != source[1]:
             build_index(root, db_path)
