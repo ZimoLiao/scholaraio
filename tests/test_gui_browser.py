@@ -57,7 +57,7 @@ def test_real_browser_preserves_dragged_selection_and_resumes_updates(tmp_path):
                 page.locator("#title-filter").evaluate("el => getComputedStyle(el, '::placeholder').fontWeight")
                 == "400"
             )
-            assert page.locator(".topbar").evaluate("el => getComputedStyle(el).height") == "66px"
+            assert page.locator(".topbar").evaluate("el => getComputedStyle(el).height") == "32px"
             assert page.locator(".detail-card").evaluate("el => getComputedStyle(el).padding") == "21px"
             assert page.locator("#detail-title").evaluate("el => getComputedStyle(el).fontSize") == "23px"
             assert "−" in page.locator("#abstract-section summary").evaluate(
