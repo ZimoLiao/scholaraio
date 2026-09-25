@@ -87,7 +87,16 @@ def test_real_browser_pages_and_filters_across_the_library(tmp_path):
     for i in range(205):
         paper = cfg.papers_dir / str(i)
         paper.mkdir(parents=True)
-        write_meta(paper, {"id": str(i), "title": f"Paper {i:03}", "authors": ["Jane Doe"], "year": 2026})
+        write_meta(
+            paper,
+            {
+                "id": str(i),
+                "title": f"Paper {i:03}",
+                "authors": ["Jane Doe"],
+                "year": 2026,
+                "paper_type": "journal-article",
+            },
+        )
     proceeding = cfg.proceedings_dir / "volume"
     child = proceeding / "papers" / "child"
     child.mkdir(parents=True)
@@ -109,6 +118,17 @@ def test_real_browser_pages_and_filters_across_the_library(tmp_path):
             page.goto(f"http://127.0.0.1:{server.server_port}")
             expect(page.locator("#table-count")).to_have_text("1–100 / 205")
             expect(page.locator("#paper-table-body tr")).to_have_count(100)
+            # A new type outside the current page must still update global facets.
+            added = cfg.papers_dir / "book"
+            added.mkdir()
+            write_meta(added, {"id": "book", "title": "New book", "year": 2000, "paper_type": "book"})
+            page.locator("#refresh-button").click()
+            expect(page.locator("#table-count")).to_have_text("1–100 / 206")
+            expect(page.locator('#type-filter option[value="book"]')).to_have_count(1)
+            page.locator("#type-filter").select_option("journal-article")
+            expect(page.locator("#table-count")).to_have_text("1–100 / 205")
+            page.locator("#refresh-button").click()
+            expect(page.locator("#type-filter")).to_have_value("journal-article")
             page.locator("#page-next").click()
             expect(page.locator("#table-count")).to_have_text("101–200 / 205")
             page.locator("#title-filter").fill("Paper 204")

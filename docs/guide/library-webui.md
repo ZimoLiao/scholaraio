@@ -22,12 +22,12 @@ The main library offers four explicit modes.
 
 | Mode | What it searches | Index required |
 | --- | --- | --- |
-| **Metadata** | The currently loaded title, author, journal/source, DOI, IDs, and directory name | None |
+| **Metadata** | Title, author, journal/source, DOI, IDs, and directory name across the whole library | None |
 | **Keyword** | FTS5 title, abstract, and conclusion text | Keyword index |
 | **Semantic** | Vector similarity over embedded paper metadata/content | Embeddings and the configured embedding provider |
 | **Unified** | Reciprocal-rank fusion of Keyword and Semantic results | Keyword index; embeddings recommended |
 
-Metadata mode filters immediately. Keyword, Semantic, and Unified modes run ranked retrieval on the server when you choose **Search** or press Enter in the query field. Ranked rows show their rank, retrieval leg, and score. Click a column heading to sort the current result set by that field; run the search again to restore relevance order.
+Metadata mode applies server-side filters across the whole library after a short typing delay. Keyword, Semantic, and Unified modes run ranked retrieval on the server when you choose **Search** or press Enter in the query field. Ranked rows show their rank, retrieval leg, and score. Click a column heading to sort the current result set by that field; run the search again to restore relevance order.
 
 Proceedings child papers currently support Metadata mode only. The mode selector is disabled on the Proceedings tab and the limitation is shown directly in the search status area.
 

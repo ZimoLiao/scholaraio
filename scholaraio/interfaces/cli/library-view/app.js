@@ -1140,6 +1140,8 @@ async function refreshActive({ keepSelection = true, background = false, force =
     if (background && deferBackgroundRefresh()) return;
     const rowsChanged = JSON.stringify(state.rows[requestTab]) !== JSON.stringify(payload.papers || []);
     const oldPage = state.payload[requestTab];
+    const facetsChanged = JSON.stringify([oldPage?.types, oldPage?.volumes]) !==
+      JSON.stringify([payload.types, payload.volumes]);
     const pageChanged = oldPage?.matched !== payload.matched || oldPage?.offset !== payload.offset;
     state.payload[requestTab] = payload;
     state.rows[requestTab] = payload.papers || [];
@@ -1150,7 +1152,7 @@ async function refreshActive({ keepSelection = true, background = false, force =
     if (state.pdf && !state.rows[requestTab].some((row) => row.pdf_url === state.pdf.url)) {
       showRecords();
     }
-    if (rowsChanged || !state.detail) renderFilters();
+    if (rowsChanged || facetsChanged || !state.detail) renderFilters();
     renderMetrics();
     if (rowsChanged || pageChanged || !state.detail) renderTable();
     setConnection("live", "Live");
