@@ -347,11 +347,7 @@ def build_index(papers_dir: Path, db_path: Path, rebuild: bool = False) -> int:
                         ),
                     )
                 else:
-                    _idx_log.warning(
-                        "IntegrityError for paper %s: %s; skipping registry update",
-                        paper_id,
-                        exc,
-                    )
+                    raise
 
             # Insert references into citations table
             refs = _reference_dois(meta.get("references") or [])

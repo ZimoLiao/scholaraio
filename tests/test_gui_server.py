@@ -2878,8 +2878,9 @@ def test_paged_library_rejects_bad_queries_and_uses_stable_revision(tmp_path):
 def test_pdf_recovery_requires_csrf_and_matching_versions(tmp_path):
     from tests.test_pdf_conflicts import conflict
 
-    cfg = _build_config({}, tmp_path)
+    cfg = _build_config({"paths": {"papers_dir": str(tmp_path / "library")}}, tmp_path)
     store, paths, reconciler, record = conflict(tmp_path)
+    (record.canonical_path.parent / "meta.json").write_text(json.dumps({"id": record.paper_id, "title": "Paper"}))
     service = SimpleNamespace(store=store, paths=paths, reconciler=reconciler)
     with _running_library_server(cfg) as (server, base):
         server.RequestHandlerClass.pdf_edit_mirror_service = service
@@ -2897,3 +2898,32 @@ def test_pdf_recovery_requires_csrf_and_matching_versions(tmp_path):
         with urlopen(_post_json(base + "/api/main/resolve-pdf", body, origin=base, token=token)) as response:
             assert json.load(response)["status"]["state"] == "in_sync"
         assert record.canonical_path.read_bytes() == record.mirror_path.read_bytes()
+
+
+def test_pdf_recovery_downloads_damaged_snapshot_without_preview(tmp_path):
+    from urllib.parse import urlencode
+
+    from tests.test_pdf_conflicts import conflict
+
+    cfg = _build_config({"paths": {"papers_dir": str(tmp_path / "library")}}, tmp_path)
+    store, paths, reconciler, record = conflict(tmp_path)
+    (record.canonical_path.parent / "meta.json").write_text(json.dumps({"id": record.paper_id, "title": "Paper"}))
+    damaged = b"partial viewer save"
+    record.canonical_path.write_bytes(damaged)
+    with _running_library_server(cfg) as (server, base):
+        server.RequestHandlerClass.pdf_edit_mirror_service = SimpleNamespace(
+            store=store, paths=paths, reconciler=reconciler
+        )
+        snapshot, _ = _json_response(base + "/api/main/pdf-recovery?id=paper-id")
+        query = urlencode({"id": record.paper_id, "version": "canonical", "token": snapshot["token"]})
+        endpoint = base + "/api/main/pdf-recovery?" + query
+        with urlopen(endpoint + "&download=1") as response:
+            assert response.read() == damaged
+            assert "attachment" in response.headers["Content-Disposition"]
+        with pytest.raises(HTTPError) as error:
+            urlopen(endpoint)
+        assert error.value.code == 400
+        record.canonical_path.write_bytes(b"new save")
+        with pytest.raises(HTTPError) as error:
+            urlopen(endpoint + "&download=1")
+        assert error.value.code == 409

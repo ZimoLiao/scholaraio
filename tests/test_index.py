@@ -361,3 +361,26 @@ def test_application_write_refreshes_keyword_search_without_manual_index(tmp_pat
     update_meta(root / "one", title="Replacement")
     assert search("Replacement", db)[0]["paper_id"] == "one"
     assert search("Original", db) == []
+
+
+def test_duplicate_doi_rebuild_rolls_back_every_projection(tmp_path):
+    import pytest
+
+    root = tmp_path / "papers"
+    for name in ("a", "b"):
+        directory = root / name
+        directory.mkdir(parents=True)
+        (directory / "meta.json").write_text(json.dumps({"id": name, "title": name, "doi": f"10.1234/{name}"}))
+    db = tmp_path / "index.db"
+    build_index(root, db)
+    with sqlite3.connect(db) as conn:
+        before = {
+            table: conn.execute(f"SELECT * FROM {table}").fetchall()
+            for table in ("papers", "papers_registry", "papers_hash", "index_source")
+        }
+    (root / "a" / "meta.json").write_text(json.dumps({"id": "a", "title": "Changed", "doi": "10.1234/b"}))
+    with pytest.raises(sqlite3.IntegrityError):
+        build_index(root, db)
+    with sqlite3.connect(db) as conn:
+        for table, rows in before.items():
+            assert conn.execute(f"SELECT * FROM {table}").fetchall() == rows

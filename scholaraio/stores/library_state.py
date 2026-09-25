@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import threading
 import time
@@ -15,15 +16,28 @@ from pathlib import Path
 
 Signature = tuple[int, int, int, int]
 Manifest = dict[str, tuple[tuple[str, Signature], ...]]
-_CACHE: dict[Path, tuple[float, int, Manifest]] = {}
+_CACHE: dict[Path, tuple[float, tuple[int, int], Manifest]] = {}
 _LOCK = threading.Lock()
+_GENERATION = 0
 
 
 def notify_metadata_write(path: Path) -> None:
     """Signal application writes without introducing another authoritative store."""
-    os.utime(path.parent.parent, None)
+    global _GENERATION
     with _LOCK:
+        _GENERATION += 1
         _CACHE.clear()
+    try:
+        os.utime(path.parent.parent, None)
+    except OSError:
+        logging.getLogger(__name__).warning("Metadata saved; collection timestamp notification failed: %s", path)
+
+
+def library_stamp(root: Path) -> tuple[int, int]:
+    """Combine filesystem notification with reliable in-process invalidation."""
+    with _LOCK:
+        generation = _GENERATION
+    return (root.stat().st_mtime_ns if root.is_dir() else 0, generation)
 
 
 def library_manifest(root: Path, *, force: bool = False) -> Manifest:
@@ -33,7 +47,7 @@ def library_manifest(root: Path, *, force: bool = False) -> Manifest:
     extracted image trees are irrelevant to metadata/list projections.
     """
     root = root.resolve()
-    stamp = root.stat().st_mtime_ns
+    stamp = library_stamp(root)
     now = time.monotonic()
     with _LOCK:
         cached = _CACHE.get(root)

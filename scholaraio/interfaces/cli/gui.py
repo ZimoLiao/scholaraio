@@ -716,12 +716,16 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
         )
 
     def _handle_pdf_recovery(self, source: str, *, write: bool = False) -> None:
+        from scholaraio.services.library_view import resolve_pdf_edit_mirror_target
         from scholaraio.services.pdf_conflicts import (
             PdfConflictChanged,
+            export_version,
             inspect_conflict,
             resolve_conflict,
-            version_path,
         )
+
+        def resolver(current):
+            return resolve_pdf_edit_mirror_target(self.cfg, current.library_kind, current.paper_id, record=current)
 
         service = self.pdf_edit_mirror_service
         if service is None or not self.native_pdf_open_enabled:
@@ -754,13 +758,21 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
                     record.sync_id,
                     token=payload.get("token", ""),
                     version=payload.get("version", ""),
+                    resolver=resolver,
                 )
                 self._send_json(HTTPStatus.OK, result)
             elif payload.get("version"):
-                pdf = version_path(service.reconciler, record.sync_id, payload["version"], payload.get("token", ""))
-                self._send_pdf(pdf, attachment=payload.get("download") == "1")
+                with export_version(
+                    service.reconciler,
+                    record.sync_id,
+                    payload["version"],
+                    payload.get("token", ""),
+                    resolver=resolver,
+                    preview=payload.get("download") != "1",
+                ) as pdf:
+                    self._send_pdf(pdf, attachment=payload.get("download") == "1")
             else:
-                self._send_json(HTTPStatus.OK, inspect_conflict(service.reconciler, record.sync_id))
+                self._send_json(HTTPStatus.OK, inspect_conflict(service.reconciler, record.sync_id, resolver=resolver))
         except PdfConflictChanged as exc:
             self._send_error_json(HTTPStatus.CONFLICT, str(exc), code="pdf_versions_changed")
         except KeyError as exc:

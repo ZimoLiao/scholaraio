@@ -752,10 +752,12 @@ async function inspectPdfRecovery() {
       const name = version.id === "canonical" ? "Library copy" : version.id === "mirror" ? "Windows viewer copy" : "Retained save";
       label.textContent = `${name}: ${version.size} bytes · ${new Date(version.mtime_ns / 1e6).toLocaleString()} · ${version.hash.slice(0, 12)}${version.valid ? "" : " (unavailable or invalid)"}`;
       row.appendChild(label);
-      if (version.valid) {
+      if (version.exportable) {
         const params = new URLSearchParams({ id, version: version.id, token: snapshot.token });
         const url = `/api/${source}/pdf-recovery?${params}`;
-        for (const [label, suffix] of [["Preview", ""], ["Download / keep this copy", "&download=1"]]) {
+        const links = [["Download / keep this copy", "&download=1"]];
+        if (version.valid) links.unshift(["Preview", ""]);
+        for (const [label, suffix] of links) {
           const link = document.createElement("a");
           link.textContent = label;
           link.href = url + suffix;
@@ -764,6 +766,8 @@ async function inspectPdfRecovery() {
           row.appendChild(link);
           row.appendChild(document.createTextNode(" "));
         }
+      }
+      if (version.valid) {
         const use = document.createElement("button");
         use.className = "action-button";
         use.textContent = "Use this version for both copies";

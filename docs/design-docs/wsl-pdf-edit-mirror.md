@@ -90,3 +90,12 @@ Require no lost annotation, no duplicate launch after a timeout, and retained
 versions available after failure. Record manual results beside the generated
 `acceptance-result.json`. A prepared fixture or passing hash check alone is not
 a completed desktop acceptance run.
+
+Recovery inspection, export and resolution revalidate the current library record
+under the entry lock. Renamed records are rebound; a stale selection token must
+be inspected again, and missing or ambiguous records cannot write to old paths.
+Preview and export stream an owned temporary snapshot whose hash matches the
+reviewed version. Later viewer saves cannot alter the bytes being streamed.
+Stable damaged/partial versions can be downloaded for manual recovery, but
+cannot be previewed or selected for publication. Temporary exports are removed
+after streaming; retained recovery originals are not automatically deleted.

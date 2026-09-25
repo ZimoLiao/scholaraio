@@ -18,15 +18,17 @@ does not silently launch embedding models or pay for remote embeddings.
 
 Scans take time; a large or slow filesystem can extend the five-second detection
 interval. Refresh forces a synchronous scan. Application writes invalidate the
-in-process manifest cache and touch the owning collection directory so other
-processes can detect them. Proceedings child writes are also detected by the
+in-process manifest cache and generation, and attempt to touch the owning collection
+directory so other processes can detect them. A failed timestamp notification is
+logged without failing an already committed metadata write; other processes still
+observe the change on their next periodic scan. Proceedings child writes are also detected by the
 background scan. No claim of a cross-filesystem/SQLite atomic transaction is
 made. An edit concurrent with an index build leaves a different source manifest,
 so a subsequent query detects the need to rebuild again.
 
 A keyword build records its source root and manifest in `index_source`, commits
 schema and data changes in a single SQLite transaction, and rejects duplicate
-paper IDs. Existing indexes remain usable; run `scholaraio index` once to enroll
+paper IDs and conflicting DOIs; constraint failures roll back every projection. Existing indexes remain usable; run `scholaraio index` once to enroll
 an older database in automatic refresh. After moving a library or restoring it
 at another root, rebuild with the new configuration before querying it.
 
@@ -51,6 +53,9 @@ files nor serialize every record. Results contain `total`, `matched`, `offset`,
 `limit`, `revision`, global type/volume facets, and the requested `papers` page.
 Stable paper ID and path break sort ties. A changed revision resets an old page
 request to page zero instead of pretending offsets address the same snapshot.
+The revision advances only when projected row contents or membership change;
+saving annotations to an existing PDF and repeating an identical audit do not
+reset pagination. Invalid scalar metadata fields are surfaced as row warnings.
 
 Ranked search returns at most 200 IDs; the catalog hydrates and pages those IDs
 in rank order. Detail, BibTeX and PDF content remain separate requests. Browsing

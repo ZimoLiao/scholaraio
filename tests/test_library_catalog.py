@@ -96,3 +96,67 @@ def test_background_scan_does_not_block_paging(tmp_path, monkeypatch):
         release.set()
         worker.join()
         catalog.close()
+
+
+def test_failed_timestamp_notification_keeps_committed_metadata_visible(tmp_path, monkeypatch):
+    from scholaraio.stores import library_state
+
+    cfg = _build_config({}, tmp_path)
+    cfg.ensure_dirs()
+    directory = cfg.papers_dir / "one"
+    directory.mkdir()
+    (directory / "meta.json").write_text(json.dumps({"id": "one", "title": "Before"}))
+    monkeypatch.setattr("scholaraio.services.library_view._background_issue_map", lambda *_: {})
+    catalog = LibraryCatalog(cfg, "main", background=False)
+    try:
+        assert catalog.page({})["papers"][0]["title"] == "Before"
+
+        def denied(*args, **kwargs):
+            raise PermissionError("collection cannot be touched")
+
+        monkeypatch.setattr(library_state.os, "utime", denied)
+        update_meta(directory, title="After")
+        assert catalog.page({"q": "After"})["matched"] == 1
+    finally:
+        catalog.close()
+
+
+def test_content_and_identical_audit_refresh_preserve_page(tmp_path, monkeypatch):
+    from scholaraio.services import library_view
+
+    cfg = _build_config({}, tmp_path)
+    cfg.ensure_dirs()
+    for i in range(101):
+        directory = cfg.papers_dir / str(i)
+        directory.mkdir()
+        (directory / "meta.json").write_text(json.dumps({"id": str(i), "title": "Paper"}))
+        (directory / "paper.pdf").write_bytes(b"old")
+    monkeypatch.setattr(library_view, "_background_issue_map", lambda *_: {})
+    catalog = LibraryCatalog(cfg, "main", background=False)
+    try:
+        first = catalog.page({"offset": "100"})
+        (cfg.papers_dir / "0" / "paper.pdf").write_bytes(b"annotation save")
+        monkeypatch.setattr(library_view, "main_audit_status", lambda *_: {"completed_at": "new audit"})
+        after = catalog.page({"offset": "100", "revision": first["revision"], "refresh": "1"})
+        assert after["revision"] == first["revision"]
+        assert after["offset"] == 100
+    finally:
+        catalog.close()
+
+
+def test_malformed_metadata_field_does_not_break_whole_catalog(tmp_path, monkeypatch):
+    cfg = _build_config({}, tmp_path)
+    cfg.ensure_dirs()
+    for name, title in [("good", "Good"), ("bad", ["not", "text"])]:
+        directory = cfg.papers_dir / name
+        directory.mkdir()
+        (directory / "meta.json").write_text(json.dumps({"id": name, "title": title, "doi": {"invalid": True}}))
+    monkeypatch.setattr("scholaraio.services.library_view._background_issue_map", lambda *_: {})
+    catalog = LibraryCatalog(cfg, "main", background=False)
+    try:
+        page = catalog.page({})
+        assert page["total"] == 2
+        bad = next(row for row in page["papers"] if row["paper_id"] == "bad")
+        assert any(issue["code"] == "invalid_metadata_type" for issue in bad["issues"])
+    finally:
+        catalog.close()

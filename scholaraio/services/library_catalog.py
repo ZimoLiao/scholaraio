@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 from scholaraio.core.config import Config
 from scholaraio.services import library_view as view
-from scholaraio.stores.library_state import Manifest, library_manifest
+from scholaraio.stores.library_state import Manifest, library_manifest, library_stamp
 from scholaraio.stores.papers import read_meta
 
 
@@ -57,7 +57,7 @@ class LibraryCatalog:
         self.manifest: Manifest | None = None
         self.revision = 0
         self.audit_revision = ""
-        self.root_stamp = 0
+        self.root_stamp = (0, 0)
         self.stop = threading.Event()
         self.worker: threading.Thread | None = None
         self.scan_error = ""
@@ -82,10 +82,10 @@ class LibraryCatalog:
         while not self.stop.wait(delay):
             started = time.monotonic()
             try:
-                stamp = self.root.stat().st_mtime_ns if self.root.is_dir() else 0
+                stamp = library_stamp(self.root)
                 manifest = library_manifest(self.root, force=True) if self.root.is_dir() else {}
                 with self.lock:
-                    current = self.root.stat().st_mtime_ns if self.root.is_dir() else 0
+                    current = library_stamp(self.root)
                     if current != stamp:
                         continue
                     self._refresh(manifest=manifest)
@@ -96,7 +96,7 @@ class LibraryCatalog:
             delay = max(0.1, 5.0 - (time.monotonic() - started))
 
     def _refresh(self, *, force: bool = False, manifest: Manifest | None = None) -> None:
-        stamp = self.root.stat().st_mtime_ns if self.root.is_dir() else 0
+        stamp = library_stamp(self.root)
         if manifest is None:
             if self.manifest is not None and stamp == self.root_stamp and not force:
                 return
@@ -114,13 +114,14 @@ class LibraryCatalog:
         if self.manifest is not None and not changed and old.keys() == manifest.keys():
             return
         issue_map = view._AUDIT_CACHE.get(str(self.root.resolve()), (0, {}))[1]
+        modified = self.manifest is None
         with self.db:
             for path in old.keys() - manifest.keys():
-                self.db.execute("DELETE FROM records WHERE path=?", (path,))
+                modified |= self.db.execute("DELETE FROM records WHERE path=?", (path,)).rowcount > 0
             for path in changed:
                 directory = self.root / path
                 if not any(name == "meta.json" for name, _signature in manifest[path]):
-                    self.db.execute("DELETE FROM records WHERE path=?", (path,))
+                    modified |= self.db.execute("DELETE FROM records WHERE path=?", (path,)).rowcount > 0
                     continue
                 if self.source == "proceedings":
                     if "/papers/" not in path:
@@ -134,11 +135,22 @@ class LibraryCatalog:
                     except (ValueError, OSError) as exc:
                         meta = {"id": directory.name, "title": directory.name}
                         issues = view._metadata_read_issues(directory.name, exc)
+                    if meta.get("id") and not isinstance(meta["id"], str):
+                        issues = [
+                            *issues,
+                            {
+                                "severity": "warning",
+                                "code": "invalid_metadata_type",
+                                "field": "id",
+                                "message": "id must be text",
+                            },
+                        ]
+                        meta = {**meta, "id": directory.name}
                     row = view._main_row(directory, meta, issues)
                     paths = view._paper_paths(self.root.resolve())
                     paths[str(row["paper_id"])] = directory
                 if row is None:
-                    self.db.execute("DELETE FROM records WHERE path=?", (path,))
+                    modified |= self.db.execute("DELETE FROM records WHERE path=?", (path,)).rowcount > 0
                     continue
 
                 def number(value: object) -> int:
@@ -147,6 +159,25 @@ class LibraryCatalog:
                     except ValueError:
                         return 0
 
+                for key in ("paper_id", "title", "authors_text", "journal", "doi", "paper_type", "proceeding_title"):
+                    value = row.get(key, "")
+                    if not isinstance(value, str):
+                        row[key] = str(value or "")
+                        row["issues"] = [
+                            *row.get("issues", []),
+                            {
+                                "code": "invalid_metadata_type",
+                                "severity": "warning",
+                                "message": f"{key} must be text",
+                                "field": key,
+                            },
+                        ]
+                        row["issue_counts"] = view._issue_counts(row["issues"])
+                payload = json.dumps(row, ensure_ascii=False, sort_keys=True)
+                previous = self.db.execute("SELECT payload FROM records WHERE path=?", (path,)).fetchone()
+                if previous is not None and previous[0] == payload:
+                    continue
+                modified = True
                 self.db.execute(
                     "INSERT OR REPLACE INTO records VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                     (
@@ -172,12 +203,13 @@ class LibraryCatalog:
                                 "proceeding_title",
                             )
                         ).casefold(),
-                        json.dumps(row, ensure_ascii=False),
+                        payload,
                     ),
                 )
         self.manifest = manifest
         self.audit_revision = audit_revision
-        self.revision += 1
+        if modified:
+            self.revision += 1
 
     def page(self, params: Mapping[str, str]) -> dict:
         query = PageQuery.parse(params)
