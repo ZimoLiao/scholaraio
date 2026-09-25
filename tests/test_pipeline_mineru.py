@@ -170,8 +170,14 @@ def test_process_inbox_local_mineru_images_reach_paper_directory(tmp_path, monke
         [],
     )
 
-    paper_dirs = list(papers.iterdir())
+    from scholaraio.stores.papers import iter_paper_dirs
+
+    paper_dirs = list(iter_paper_dirs(papers))
     assert len(paper_dirs) == 1
+    assert all(
+        entry.is_dir() or (entry.name.startswith(".scholaraio-") and entry.suffix == ".lock")
+        for entry in papers.iterdir()
+    )
     paper_dir = paper_dirs[0]
     assert (paper_dir / "paper.md").read_text(encoding="utf-8") == "![fig](images/fig.png)\n"
     assert (paper_dir / "images" / "fig.png").read_bytes() == image_bytes
