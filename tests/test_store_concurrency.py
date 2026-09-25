@@ -157,3 +157,72 @@ def test_rename_new_path_waits_for_registry_commit(tmp_path, monkeypatch):
     assert final.exists()
     assert commits[-1] == final.parent
     assert [p.name for p in commits] == ["Unknown-2026-First", "Unknown-2026-Second"]
+
+
+def test_workspace_rename_waits_for_add(tmp_path, monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError
+
+    from scholaraio.projects.workspace import rename
+    from scholaraio.services import index
+
+    old = tmp_path / "old"
+    create(old)
+    adding = threading.Event()
+    release = threading.Event()
+
+    def lookup(*_args):
+        adding.set()
+        assert release.wait(5)
+        return {"id": "A", "dir_name": "paper"}
+
+    monkeypatch.setattr(index, "lookup_paper", lookup)
+    with ThreadPoolExecutor(2) as pool:
+        writer = pool.submit(add, old, ["A"], tmp_path / "unused.db")
+        assert adding.wait(5)
+        mover = pool.submit(rename, tmp_path, "old", "new")
+        try:
+            with pytest.raises(TimeoutError):
+                mover.result(timeout=0.1)
+        finally:
+            release.set()
+        writer.result(timeout=5)
+        new = mover.result(timeout=5)
+    assert not old.exists()
+    assert [e["id"] for e in json.loads((new / "refs" / "papers.json").read_text())] == ["A"]
+
+
+def test_waiting_workspace_add_does_not_recreate_renamed_directory(tmp_path, monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError
+
+    from scholaraio.projects.workspace import rename
+
+    old = tmp_path / "old"
+    create(old)
+    moved = threading.Event()
+    release = threading.Event()
+    original = Path.rename
+
+    def paused_rename(path, target):
+        result = original(path, target)
+        if path == old:
+            moved.set()
+            assert release.wait(5)
+        return result
+
+    monkeypatch.setattr(Path, "rename", paused_rename)
+    with ThreadPoolExecutor(2) as pool:
+        mover = pool.submit(rename, tmp_path, "old", "new")
+        assert moved.wait(5)
+        writer = pool.submit(_add_reference, (str(old), 1))
+        try:
+            with pytest.raises(TimeoutError):
+                writer.result(timeout=0.1)
+        finally:
+            release.set()
+        mover.result(timeout=5)
+        with pytest.raises(FileNotFoundError):
+            writer.result(timeout=5)
+    assert not old.exists()
+    assert json.loads((tmp_path / "new" / "refs" / "papers.json").read_text()) == []

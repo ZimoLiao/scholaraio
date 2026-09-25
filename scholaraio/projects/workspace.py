@@ -16,6 +16,8 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
@@ -292,6 +294,21 @@ def _write(ws_dir: Path, entries: list[dict]) -> None:
     atomic_write_text(pj, json.dumps(entries, indent=2, ensure_ascii=False) + "\n")
 
 
+@contextmanager
+def _workspace_lock(ws_dir: Path, *, create_workspace: bool = False) -> Iterator[None]:
+    """Serialize reference writes and rename across one workspace collection."""
+    if create_workspace:
+        ws_dir.parent.mkdir(parents=True, exist_ok=True)
+    # This synthetic record puts the persistent sidecar outside the collection,
+    # so no open lock handle travels with a renamed workspace on Windows.
+    with file_lock(ws_dir.parent / ".workspace-references"):
+        if create_workspace:
+            ws_dir.mkdir(exist_ok=True)
+        elif not ws_dir.exists():
+            raise FileNotFoundError(f"工作区不存在: {ws_dir.name}")
+        yield
+
+
 # ============================================================================
 #  Public API
 # ============================================================================
@@ -306,9 +323,8 @@ def create(ws_dir: Path) -> Path:
     Returns:
         论文索引文件路径。
     """
-    ws_dir.mkdir(parents=True, exist_ok=True)
     pj = _paper_index_path(ws_dir)
-    with file_lock(_paper_index_path(ws_dir), create_parent=True):
+    with _workspace_lock(ws_dir, create_workspace=True):
         if not pj.exists():
             _write(ws_dir, [])
         return pj
@@ -339,7 +355,7 @@ def add(
     Returns:
         新增条目列表。
     """
-    with file_lock(_paper_index_path(ws_dir), create_parent=True):
+    with _workspace_lock(ws_dir):
         entries = _read(ws_dir)
         existing_ids = {e["id"] for e in entries}
         added: list[dict] = []
@@ -397,7 +413,7 @@ def remove(ws_dir: Path, paper_refs: list[str], db_path: Path) -> list[dict]:
     """
     from scholaraio.services.index import lookup_paper
 
-    with file_lock(_paper_index_path(ws_dir), create_parent=True):
+    with _workspace_lock(ws_dir):
         entries = _read(ws_dir)
         remove_ids: set[str] = set()
         remove_dir_names: set[str] = set()
@@ -488,7 +504,7 @@ def show(ws_dir: Path, db_path: Path) -> list[dict]:
     """
     from scholaraio.services.index import lookup_paper
 
-    with file_lock(_paper_index_path(ws_dir), create_parent=True):
+    with _workspace_lock(ws_dir):
         entries = _read(ws_dir)
         changed = False
         for e in entries:
@@ -535,16 +551,15 @@ def rename(ws_root: Path, old_name: str, new_name: str) -> Path:
         raise ValueError(f"非法工作区名称: {new_name}")
     old_dir = ws_root / old_name
     new_dir = ws_root / new_name
-    if not old_dir.exists():
-        raise FileNotFoundError(f"工作区不存在: {old_name}")
-    if not old_dir.is_dir():
-        raise ValueError(f"不是有效工作区目录: {old_name}")
-    if not has_paper_index(old_dir):
-        raise ValueError(f"缺少工作区论文索引（refs/papers.json），无法重命名工作区: {old_name}")
-    if new_dir.exists():
-        raise FileExistsError(f"目标工作区已存在: {new_name}")
-    old_dir.rename(new_dir)
-    return new_dir
+    with _workspace_lock(old_dir):
+        if not old_dir.is_dir():
+            raise ValueError(f"不是有效工作区目录: {old_name}")
+        if not has_paper_index(old_dir):
+            raise ValueError(f"缺少工作区论文索引（refs/papers.json），无法重命名工作区: {old_name}")
+        if new_dir.exists():
+            raise FileExistsError(f"目标工作区已存在: {new_name}")
+        old_dir.rename(new_dir)
+        return new_dir
 
 
 def read_dir_names(ws_dir: Path, db_path: Path) -> set[str]:
