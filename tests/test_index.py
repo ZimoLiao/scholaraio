@@ -417,3 +417,18 @@ def test_pdf_and_markdown_saves_do_not_rebuild_metadata_index(tmp_path, monkeypa
     assert builds == [True]
     with sqlite3.connect(db) as conn:
         assert conn.execute("SELECT md_path FROM papers").fetchone() == ("",)
+
+
+def test_keyword_refresh_tolerates_nonfinite_citation_counts(tmp_path):
+    from scholaraio.stores.papers import update_meta
+
+    directory = tmp_path / "papers" / "one"
+    directory.mkdir(parents=True)
+    (directory / "meta.json").write_text(json.dumps({"id": "one", "title": "Evidence"}))
+    db = tmp_path / "index.db"
+    build_index(directory.parent, db)
+    for value in (float("inf"), float("nan"), {"bad": float("inf"), "good": 12}):
+        update_meta(directory, citation_count=value)
+        assert search("Evidence", db)[0]["paper_id"] == "one"
+    with sqlite3.connect(db) as conn:
+        assert conn.execute("SELECT citation_count FROM papers").fetchone() == ("12",)

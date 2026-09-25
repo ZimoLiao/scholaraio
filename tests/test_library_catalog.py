@@ -226,3 +226,23 @@ def test_nonfinite_provider_citations_do_not_discard_valid_count(tmp_path, monke
         assert row["issues"][0]["rule"] == "invalid_metadata_number"
     finally:
         catalog.close()
+
+
+@pytest.mark.parametrize("location", ["volume", "child"])
+@pytest.mark.parametrize("invalid", [[], "not an object", None])
+def test_proceedings_non_object_metadata_is_a_row_issue(tmp_path, location, invalid):
+    cfg = _build_config({}, tmp_path)
+    volume = cfg.proceedings_dir / "volume"
+    child = volume / "papers" / "child"
+    child.mkdir(parents=True)
+    (volume / "meta.json").write_text(json.dumps({"id": "volume", "title": "Volume"}))
+    (child / "meta.json").write_text(json.dumps({"id": "child", "title": "Child"}))
+    directory = volume if location == "volume" else child
+    (directory / "meta.json").write_text(json.dumps(invalid))
+    catalog = LibraryCatalog(cfg, "proceedings", background=False)
+    try:
+        page = catalog.page({})
+        assert page["total"] == 1
+        assert page["papers"][0]["issues"]
+    finally:
+        catalog.close()

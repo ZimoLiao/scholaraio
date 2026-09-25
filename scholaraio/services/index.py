@@ -130,12 +130,7 @@ def _index_hash(meta: dict) -> str:
         normalize_paper_type(meta.get("paper_type"), meta.get("journal"), meta.get("doi")),
         ((meta.get("ids") or {}).get("patent_publication_number", "") or ""),
     ]
-    cc = meta.get("citation_count")
-    if isinstance(cc, (int, float)):
-        parts.append(str(int(cc)))
-    elif cc and isinstance(cc, dict):
-        vals = [v for v in cc.values() if isinstance(v, (int, float))]
-        parts.append(str(max(vals)) if vals else "")
+    parts.append(str(best_citation(meta)))
     parts.append(json.dumps(meta.get("references", []), sort_keys=True))
     text = "\n".join(parts)
     return hashlib.md5(text.encode("utf-8")).hexdigest()[:12]
