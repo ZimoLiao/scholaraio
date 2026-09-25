@@ -708,13 +708,6 @@ button.pill {
   line-height: 1.2;
 }
 
-.detail-hero p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.4;
-}
-
 .detail-section {
   display: grid;
   gap: 0;

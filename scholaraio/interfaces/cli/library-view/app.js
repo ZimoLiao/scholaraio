@@ -89,7 +89,6 @@ const els = {
   volumeFilterLabel: document.getElementById("volume-filter-label"),
   refreshButton: document.getElementById("refresh-button"),
   detailTitle: document.getElementById("detail-title"),
-  detailCitation: document.getElementById("detail-citation"),
   detailActions: document.getElementById("detail-actions"),
   copyBibtexButton: document.getElementById("copy-bibtex-button"),
   previewPdfButton: document.getElementById("preview-pdf-button"),
@@ -903,7 +902,6 @@ function renderDetail(detail) {
     closePdfRecovery();
     state.detail = null;
     els.detailTitle.textContent = "Select a record";
-    els.detailCitation.textContent = "";
     els.metadataGrid.textContent = "";
     els.issueList.textContent = "";
     els.detailAbstract.textContent = "--";
@@ -916,7 +914,6 @@ function renderDetail(detail) {
   }
   state.detail = detail;
   els.detailTitle.textContent = text(detail.title);
-  els.detailCitation.textContent = [detail.authors_text, detail.year].filter(Boolean).join(" · ");
   renderMetadata(detail);
   renderIssues(detail);
   renderMarkdown(els.detailAbstract, detail.abstract);
