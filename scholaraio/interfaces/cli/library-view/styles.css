@@ -666,7 +666,12 @@ button.pill {
   align-content: start;
   gap: 0;
   overflow: auto;
+  scrollbar-width: none;
   padding: 21px;
+}
+
+.detail-card::-webkit-scrollbar {
+  display: none;
 }
 
 .detail-hero {
