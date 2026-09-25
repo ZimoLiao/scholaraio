@@ -135,6 +135,11 @@ def test_content_and_identical_audit_refresh_preserve_page(tmp_path, monkeypatch
     catalog = LibraryCatalog(cfg, "main", background=False)
     try:
         first = catalog.page({"offset": "100"})
+
+        def unexpected_read(_directory):
+            pytest.fail("Unchanged row inputs must not reparse metadata")
+
+        monkeypatch.setattr("scholaraio.services.library_catalog.read_meta", unexpected_read)
         (cfg.papers_dir / "0" / "paper.pdf").write_bytes(b"annotation save")
         monkeypatch.setattr(library_view, "main_audit_status", lambda *_: {"completed_at": "new audit"})
         after = catalog.page({"offset": "100", "revision": first["revision"], "refresh": "1"})
@@ -163,10 +168,11 @@ def test_malformed_metadata_field_does_not_break_whole_catalog(tmp_path, monkeyp
 
 
 @pytest.mark.parametrize("field", ["year", "citation_count"])
-def test_out_of_range_integer_is_a_row_warning(tmp_path, monkeypatch, field):
+@pytest.mark.parametrize("value", [10**100, float("inf"), float("nan"), float("-inf")])
+def test_out_of_range_integer_is_a_row_warning(tmp_path, monkeypatch, field, value):
     cfg = _build_config({}, tmp_path)
     cfg.ensure_dirs()
-    for name, extra in [("good", {}), ("bad", {field: 10**100})]:
+    for name, extra in [("good", {}), ("bad", {field: value})]:
         directory = cfg.papers_dir / name
         directory.mkdir()
         (directory / "meta.json").write_text(json.dumps({"id": name, "title": name, **extra}))
@@ -178,5 +184,45 @@ def test_out_of_range_integer_is_a_row_warning(tmp_path, monkeypatch, field):
         bad = next(row for row in page["papers"] if row["paper_id"] == "bad")
         assert bad[field] == 0
         assert any(issue["rule"] == "invalid_metadata_number" for issue in bad["issues"])
+    finally:
+        catalog.close()
+
+
+def test_removing_proceedings_volume_metadata_removes_projected_children(tmp_path):
+    cfg = _build_config({}, tmp_path)
+    volume = cfg.proceedings_dir / "volume"
+    child = volume / "papers" / "child"
+    child.mkdir(parents=True)
+    (volume / "meta.json").write_text(json.dumps({"id": "volume", "title": "Original volume"}))
+    (child / "meta.json").write_text(json.dumps({"id": "child", "title": "Child paper"}))
+    catalog = LibraryCatalog(cfg, "proceedings", background=False)
+    try:
+        first = catalog.page({})
+        assert first["total"] == 1
+        (volume / "meta.json").unlink()
+        page = catalog.page({"refresh": "1"})
+        assert page["total"] == 0
+        assert page["revision"] != first["revision"]
+        (volume / "meta.json").write_text(json.dumps({"id": "volume", "title": "Restored volume"}))
+        restored = catalog.page({"refresh": "1"})
+        assert restored["total"] == 1
+        assert restored["papers"][0]["proceeding_title"] == "Restored volume"
+    finally:
+        catalog.close()
+
+
+def test_nonfinite_provider_citations_do_not_discard_valid_count(tmp_path, monkeypatch):
+    cfg = _build_config({}, tmp_path)
+    directory = cfg.papers_dir / "one"
+    directory.mkdir(parents=True)
+    (directory / "meta.json").write_text(
+        json.dumps({"id": "one", "title": "One", "citation_count": {"bad": float("inf"), "good": 12}})
+    )
+    monkeypatch.setattr("scholaraio.services.library_view._background_issue_map", lambda *_: {})
+    catalog = LibraryCatalog(cfg, "main", background=False)
+    try:
+        row = catalog.page({})["papers"][0]
+        assert row["citation_count"] == 12
+        assert row["issues"][0]["rule"] == "invalid_metadata_number"
     finally:
         catalog.close()

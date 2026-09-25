@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import sqlite3
 import threading
 import time
@@ -57,6 +58,7 @@ class LibraryCatalog:
         self.manifest: Manifest | None = None
         self.revision = 0
         self.audit_revision = ""
+        self.audit_issues: dict[str, list[dict]] = {}
         self.root_stamp = (0, 0)
         self.stop = threading.Event()
         self.worker: threading.Thread | None = None
@@ -105,15 +107,22 @@ class LibraryCatalog:
         audit = view.main_audit_status(self.root) if self.source == "main" else {}
         audit_revision = str(audit.get("completed_at", ""))
         old = self.manifest or {}
-        changed = {path for path, signature in manifest.items() if old.get(path) != signature}
+        issue_map = view._AUDIT_CACHE.get(str(self.root.resolve()), (0, {}))[1]
+
+        def projected(signature):
+            return tuple((name, stat if name == "meta.json" else None) for name, stat in signature)
+
+        changed = {path for path, signature in manifest.items() if projected(old.get(path, ())) != projected(signature)}
         if audit_revision != self.audit_revision:
-            changed.update(manifest)
+            changed.update(path for path in manifest if self.audit_issues.get(path, []) != issue_map.get(path, []))
         if self.source == "proceedings":
-            volumes = {path for path in changed if "/papers/" not in path}
+            volumes = {path for path in changed | (old.keys() - manifest.keys()) if "/papers/" not in path}
             changed.update(path for path in manifest if path.split("/")[0] in volumes)
         if self.manifest is not None and not changed and old.keys() == manifest.keys():
+            self.manifest = manifest
+            self.audit_revision = audit_revision
+            self.audit_issues = dict(issue_map)
             return
-        issue_map = view._AUDIT_CACHE.get(str(self.root.resolve()), (0, {}))[1]
         modified = self.manifest is None
         with self.db:
             for path in old.keys() - manifest.keys():
@@ -147,6 +156,18 @@ class LibraryCatalog:
                             },
                         ]
                         meta = {**meta, "id": directory.name}
+                    citation = meta.get("citation_count")
+                    values = citation.values() if isinstance(citation, dict) else [citation]
+                    if any(isinstance(value, float) and not math.isfinite(value) for value in values):
+                        issues = [
+                            *issues,
+                            {
+                                "rule": "invalid_metadata_number",
+                                "severity": "warning",
+                                "field": "citation_count",
+                                "message": "citation_count contains a non-finite number",
+                            },
+                        ]
                     row = view._main_row(directory, meta, issues)
                     paths = view._paper_paths(self.root.resolve())
                     paths[str(row["paper_id"])] = directory
@@ -158,9 +179,11 @@ class LibraryCatalog:
                     try:
                         result = int(str(value or "0"))
                     except ValueError:
-                        return 0
-                    if -(2**63) <= result < 2**63:
-                        return result
+                        if not isinstance(value, float) or math.isfinite(value):
+                            return 0
+                    else:
+                        if -(2**63) <= result < 2**63:
+                            return result
                     row[field] = 0
                     row["issues"] = [
                         *row.get("issues", []),
@@ -227,6 +250,7 @@ class LibraryCatalog:
                 )
         self.manifest = manifest
         self.audit_revision = audit_revision
+        self.audit_issues = dict(issue_map)
         if modified:
             self.revision += 1
 

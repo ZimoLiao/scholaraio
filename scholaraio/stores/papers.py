@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import html
 import json
+import math
 import re
 import shutil
 import uuid
@@ -233,10 +234,10 @@ def best_citation(meta: dict) -> int:
     if not cc:
         return 0
     if isinstance(cc, (int, float)):
-        return int(cc)
+        return int(cc) if not isinstance(cc, float) or math.isfinite(cc) else 0
     if not isinstance(cc, dict):
         return 0
-    vals = [v for v in cc.values() if isinstance(v, (int, float))]
+    vals = [v for v in cc.values() if isinstance(v, (int, float)) and (not isinstance(v, float) or math.isfinite(v))]
     return int(max(vals)) if vals else 0
 
 
