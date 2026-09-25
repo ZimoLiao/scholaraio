@@ -972,3 +972,36 @@ def test_old_open_handle_save_after_success_is_detected_on_next_reconcile(tmp_pa
     assert reconciler.reconcile(record.sync_id, record_exists=True).state == "conflict"
     retained = list(record.mirror_path.parent.glob(".scholaraio-pdf-recovery/**/*.pdf"))
     assert any(p.is_file() and p.read_bytes() == late for p in retained)
+
+
+def test_backup_restore_detects_late_save_through_displaced_handle(tmp_path, monkeypatch):
+    store, paths, reconciler = _reconciler(tmp_path)
+    canonical = tmp_path / "library" / "paper" / "paper.pdf"
+    _write_pdf(canonical, b"base", mtime_ns=2_000_000_000)
+    record = reconciler.register(_target(tmp_path, canonical))
+    assert reconciler.reconcile(record.sync_id, record_exists=True).state == "in_sync"
+    _write_pdf(record.mirror_path, b"edit", mtime_ns=3_000_000_000)
+    assert reconciler.reconcile(record.sync_id, record_exists=True).state == "in_sync"
+    assert paths.backup_path(record.sync_id).exists()
+    canonical.write_bytes(b"partial canonical save")
+    record.mirror_path.write_bytes(b"partial mirror save")
+    original = reconciler._atomic_copy
+    late = b"%PDF-1.4\nlate completed save\n%%EOF\n"
+    with canonical.open("r+b") as handle:
+
+        def copy_then_finish_save(source, destination, **kwargs):
+            copied = original(source, destination, **kwargs)
+            if destination == canonical:
+                handle.seek(0)
+                handle.write(late)
+                handle.truncate()
+                handle.flush()
+                os.fsync(handle.fileno())
+            return copied
+
+        monkeypatch.setattr(reconciler, "_atomic_copy", copy_then_finish_save)
+        result = reconciler.reconcile(record.sync_id, record_exists=True)
+    assert result.state == "conflict"
+    assert store.get(record.sync_id).state == "conflict"
+    retained = canonical.parent.glob(".scholaraio-pdf-recovery/**/*.pdf")
+    assert any(p.is_file() and p.read_bytes() == late for p in retained)

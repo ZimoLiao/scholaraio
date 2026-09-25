@@ -492,6 +492,10 @@ class PdfEditMirrorReconciler:
         direction: str,
         bytes_copied: int,
     ) -> PdfReconcileResult:
+        # All success paths, including backup restoration, must check old reader
+        # handles immediately before advancing the common base hash.
+        if self.recovery_changed(record):
+            raise _DestinationChanged()
         self.store.update(
             record.sync_id,
             base_hash=canonical.content_hash,
@@ -530,8 +534,6 @@ class PdfEditMirrorReconciler:
         bytes_copied = self._atomic_copy(
             source, destination, destination_root=destination_root, expected_destination=destination_state
         )
-        if self.recovery_changed(record):
-            raise _DestinationChanged()
         canonical = self._inspect(record.canonical_path, library_root)
         mirror = self._inspect(record.mirror_path, self.paths.mirror_root)
         if not canonical.valid or not mirror.valid or canonical.content_hash != mirror.content_hash:
