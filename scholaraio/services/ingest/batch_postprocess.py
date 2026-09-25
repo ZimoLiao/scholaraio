@@ -65,7 +65,7 @@ def batch_postprocess(
     enrich: bool = False,
 ) -> None:
     """Abstract backfill + optional toc/l3 enrich + embed/index for converted papers."""
-    from scholaraio.stores.papers import read_meta, write_meta
+    from scholaraio.stores.papers import read_meta, update_meta
 
     # Abstract backfill
     backfilled = 0
@@ -81,7 +81,7 @@ def batch_postprocess(
                 abstract = extract_abstract_from_md(paper_md, cfg)
                 if abstract:
                     data["abstract"] = abstract
-                    write_meta(pdir, data)
+                    update_meta(pdir, abstract=abstract)
                     backfilled += 1
         except (ValueError, FileNotFoundError) as e:
             _log.debug("failed to backfill abstract for %s: %s", pdir.name, e)

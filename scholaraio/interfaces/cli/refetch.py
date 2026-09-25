@@ -103,7 +103,7 @@ def cmd_refetch(args: argparse.Namespace, cfg) -> None:
         try:
             if references_only:
                 return jp, refetch_metadata(jp, references_only=True)
-            return jp, refetch_metadata(jp)
+            return jp, refetch_metadata(jp, db_path=cfg.index_db)
         except Exception as e:
             _log_error("refetch failed %s: %s", jp.parent.name, e)
             return jp, None

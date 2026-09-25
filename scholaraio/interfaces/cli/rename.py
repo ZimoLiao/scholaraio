@@ -57,7 +57,7 @@ def cmd_rename(args: argparse.Namespace, cfg) -> None:
             fail += 1
             continue
 
-        new_path = rename_paper(json_path, dry_run=args.dry_run)
+        new_path = rename_paper(json_path, dry_run=args.dry_run, db_path=cfg.index_db)
         if new_path:
             action = "Preview" if args.dry_run else "Rename"
             _ui(f"{action}: {json_path.parent.name} -> {new_path.parent.name}")

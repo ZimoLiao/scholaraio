@@ -385,7 +385,7 @@ def backfill_abstracts(
 
 def _write_abstract(json_path: Path, data: dict, abstract: str, dry_run: bool, *, label: str = "") -> None:
     """Write abstract to JSON file (or preview in dry-run mode)."""
-    from scholaraio.stores.papers import write_meta
+    from scholaraio.stores.papers import update_meta
 
     preview = abstract[:80] + ("..." if len(abstract) > 80 else "")
     tag = f"[{label}] " if label else ""
@@ -393,5 +393,5 @@ def _write_abstract(json_path: Path, data: dict, abstract: str, dry_run: bool, *
         _log.debug("[preview] %s%s %s", tag, json_path.stem, preview)
     else:
         data["abstract"] = abstract
-        write_meta(json_path.parent, data)
+        update_meta(json_path.parent, abstract=abstract)
         _log.debug("%s%s %s", tag, json_path.stem, preview)

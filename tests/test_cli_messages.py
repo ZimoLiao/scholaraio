@@ -352,7 +352,9 @@ class TestRefetchIdentifierResolution:
         seen: list[Path] = []
         messages: list[str] = []
         monkeypatch.setattr(cli, "ui", messages.append)
-        monkeypatch.setattr("scholaraio.services.ingest_metadata.refetch_metadata", lambda jp: seen.append(jp) or True)
+        monkeypatch.setattr(
+            "scholaraio.services.ingest_metadata.refetch_metadata", lambda jp, *, db_path: seen.append(jp) or True
+        )
 
         cfg = SimpleNamespace(papers_dir=tmp_papers, index_db=tmp_db)
         args = Namespace(paper_id="aaaa-1111", all=False, force=False, jobs=5)
@@ -367,7 +369,9 @@ class TestRefetchIdentifierResolution:
         seen: list[Path] = []
         messages: list[str] = []
         monkeypatch.setattr(cli, "ui", messages.append)
-        monkeypatch.setattr("scholaraio.services.ingest_metadata.refetch_metadata", lambda jp: seen.append(jp) or True)
+        monkeypatch.setattr(
+            "scholaraio.services.ingest_metadata.refetch_metadata", lambda jp, *, db_path: seen.append(jp) or True
+        )
 
         cfg = SimpleNamespace(papers_dir=tmp_papers, index_db=tmp_path / "missing-index.db")
         args = Namespace(paper_id="10.1234/JFM.2023.001", all=False, force=False, jobs=5)

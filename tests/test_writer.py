@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from scholaraio.services.ingest_metadata._models import PaperMetadata
 from scholaraio.services.ingest_metadata._writer import (
     _clean_title_for_filename,
@@ -546,3 +548,48 @@ class TestMetadataToDictWebFields:
         assert data["source_type"] == "web"
         assert data["extracted_at"] == "2026-04-14T12:00:00"
         assert data["extraction_method"] == "qt-web-extractor"
+
+
+@pytest.mark.parametrize("custom_index", [False, True])
+def test_rename_updates_configured_registry_and_search_paths(tmp_path, custom_index):
+    import sqlite3
+
+    from scholaraio.core.config import _build_config
+    from scholaraio.services.index import build_index, lookup_paper
+    from scholaraio.services.ingest_metadata import rename_paper
+
+    cfg = _build_config({"paths": {"index_db": "custom/search.db"}} if custom_index else {}, tmp_path)
+    old = cfg.papers_dir / "old"
+    old.mkdir(parents=True)
+    (old / "meta.json").write_text(
+        json.dumps({"id": "rename-id", "title": "New title", "first_author_lastname": "Doe", "year": 2026})
+    )
+    (old / "paper.md").write_text("# New title\n")
+    cfg.index_db.parent.mkdir(parents=True, exist_ok=True)
+    build_index(cfg.papers_dir, cfg.index_db)
+
+    new = rename_paper(old / "meta.json", db_path=cfg.index_db)
+
+    assert new is not None
+    assert lookup_paper(cfg.index_db, "rename-id")["dir_name"] == new.parent.name
+    with sqlite3.connect(cfg.index_db) as conn:
+        assert conn.execute("SELECT md_path FROM papers WHERE paper_id = 'rename-id'").fetchone()[0] == str(
+            new.parent / "paper.md"
+        )
+    assert not (cfg.papers_dir.parent / "index.db").exists()
+
+
+def test_rename_rolls_directory_back_when_index_update_fails(tmp_path):
+    import sqlite3
+
+    from scholaraio.services.ingest_metadata import rename_paper
+
+    old = tmp_path / "old"
+    old.mkdir()
+    (old / "meta.json").write_text(json.dumps({"id": "rename-id", "title": "New title"}))
+    db = tmp_path / "index.db"
+    with sqlite3.connect(db) as conn:
+        conn.execute("CREATE TABLE papers_registry (wrong_column TEXT)")
+    with pytest.raises(sqlite3.OperationalError):
+        rename_paper(old / "meta.json", db_path=db)
+    assert (old / "meta.json").exists()

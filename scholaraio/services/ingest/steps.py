@@ -225,7 +225,7 @@ def step_refetch(json_path: Path, cfg: Config, opts: dict) -> StepResult:
 
     from scholaraio.services.ingest_metadata import refetch_metadata
 
-    changed = refetch_metadata(json_path)
+    changed = refetch_metadata(json_path, db_path=cfg.index_db)
     if changed:
         _log.debug("updated: %s", json_path.stem)
     else:
