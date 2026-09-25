@@ -434,8 +434,26 @@ h1 {
 .pdf-toolbar-title {
   display: flex;
   align-items: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 7px;
   min-width: 0;
+  width: 100%;
+}
+
+.pdf-heading {
+  flex: 1 1 160px;
+  min-width: 0;
+  margin-left: 8px;
+}
+
+.pdf-heading .table-count {
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .table-count {
