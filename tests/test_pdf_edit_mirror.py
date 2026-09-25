@@ -250,31 +250,34 @@ def test_canonical_only_change_refreshes_mirror(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("canonical_mtime", "mirror_mtime", "expected_direction", "winner"),
-    [
-        (5_000_000_000, 4_000_000_000, "canonical_to_mirror", b"canonical-new"),
-        (4_000_000_000, 5_000_000_000, "mirror_to_canonical", b"mirror-new"),
-        (5_000_000_000, 5_000_000_000, "mirror_to_canonical", b"mirror-new"),
-    ],
+    "canonical_mtime,mirror_mtime",
+    [(5_000_000_000, 4_000_000_000), (4_000_000_000, 5_000_000_000), (5_000_000_000, 5_000_000_000)],
 )
-def test_both_changed_uses_newest_and_equal_mtime_prefers_mirror(
-    tmp_path, canonical_mtime, mirror_mtime, expected_direction, winner
-):
-    store, _paths, reconciler = _reconciler(tmp_path)
+def test_both_changed_preserves_both_files_as_conflict(tmp_path, canonical_mtime, mirror_mtime):
+    store, paths, reconciler = _reconciler(tmp_path)
     canonical = tmp_path / "library" / "paper" / "paper.pdf"
     _write_pdf(canonical, b"base", mtime_ns=2_000_000_000)
     record = reconciler.register(_target(tmp_path, canonical))
     reconciler.reconcile(record.sync_id, record_exists=True)
     record = store.get(record.sync_id)
-    assert record is not None
-    _write_pdf(canonical, b"canonical-new", mtime_ns=canonical_mtime)
-    _write_pdf(record.mirror_path, b"mirror-new", mtime_ns=mirror_mtime)
+    library_edit = _write_pdf(canonical, b"canonical-new", mtime_ns=canonical_mtime)
+    viewer_edit = _write_pdf(record.mirror_path, b"mirror-new", mtime_ns=mirror_mtime)
 
     result = reconciler.reconcile(record.sync_id, record_exists=True)
 
-    assert result.direction == expected_direction
-    assert winner in canonical.read_bytes()
-    assert canonical.read_bytes() == record.mirror_path.read_bytes()
+    assert result.state == "conflict"
+    assert result.retryable is False
+    assert canonical.read_bytes() == library_edit
+    assert record.mirror_path.read_bytes() == viewer_edit
+    service = PdfEditMirrorService(
+        store=store, paths=paths, resolver=None, auto_start=False, deep_validator=lambda _: None
+    )
+    assert service.prepare_for_open(_target(tmp_path, canonical)).launchable is False
+    assert store.get(record.sync_id).state == "conflict"
+    # A deliberate external reconciliation (same bytes on both sides) clears it.
+    record.mirror_path.write_bytes(library_edit)
+    result = reconciler.reconcile(record.sync_id, record_exists=True)
+    assert result.state == "in_sync"
 
 
 def test_invalid_mirror_never_replaces_valid_canonical(tmp_path):

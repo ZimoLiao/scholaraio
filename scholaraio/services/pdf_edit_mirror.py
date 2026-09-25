@@ -593,10 +593,26 @@ class PdfEditMirrorReconciler:
             winner = "canonical"
         elif mirror_changed and not canonical_changed:
             winner = "mirror"
-        elif canonical.mtime_ns > mirror.mtime_ns:
-            winner = "canonical"
         else:
-            winner = "mirror"
+            message = (
+                "Both PDFs changed. Synchronization is paused; preserve and reconcile both copies before reopening."
+            )
+            self.store.update(
+                record.sync_id,
+                state="conflict",
+                retryable=False,
+                message=message,
+                canonical_hash=canonical.content_hash,
+                canonical_size=canonical.size,
+                canonical_mtime_ns=canonical.mtime_ns,
+                canonical_inode=canonical.inode,
+                mirror_hash=mirror.content_hash,
+                mirror_size=mirror.size,
+                mirror_mtime_ns=mirror.mtime_ns,
+                mirror_inode=mirror.inode,
+                next_retry_at=0.0,
+            )
+            return PdfReconcileResult("conflict", retryable=False, message=message)
 
         if winner == "canonical":
             return self._copy_winner(
@@ -747,6 +763,8 @@ class PdfEditMirrorService:
                 launchable=True,
                 status=self.store.public_status(record),
             )
+        if record.state == "conflict" and not self._changed(record):
+            return PdfOpenPreparation(record.mirror_path, False, self.store.public_status(record))
         if not self._wait_until_settled(record, budget_seconds):
             record = self.store.update(
                 record.sync_id,
@@ -762,7 +780,7 @@ class PdfEditMirrorService:
                 lock_timeout_seconds=remaining,
             )
             record = self.store.get(record.sync_id) or record
-        launchable = record.state == "in_sync" or self._known_good_launchable(record)
+        launchable = record.state == "in_sync" or (record.state != "conflict" and self._known_good_launchable(record))
         return PdfOpenPreparation(
             mirror_path=record.mirror_path,
             launchable=launchable,
@@ -820,7 +838,7 @@ class PdfEditMirrorService:
             signature_changed = signatures != self._stored_signatures(current)
             retry_due = current.next_retry_at <= now
             audit_due = self._next_resolution_audit.get(current.sync_id, 0.0) <= now
-            needs_reconcile = signature_changed or current.state != "in_sync"
+            needs_reconcile = signature_changed or current.state not in {"in_sync", "conflict"}
             if not (signature_changed or audit_due or (needs_reconcile and retry_due)):
                 continue
             resolution = self._normalize_resolution(self.resolver(current))
@@ -841,7 +859,7 @@ class PdfEditMirrorService:
             if current.next_retry_at > now:
                 continue
             signatures = self._current_signatures(current)
-            changed = signatures != self._stored_signatures(current) or current.state != "in_sync"
+            changed = signatures != self._stored_signatures(current) or current.state not in {"in_sync", "conflict"}
             if not changed:
                 self._observations.pop(current.sync_id, None)
                 continue
@@ -852,7 +870,7 @@ class PdfEditMirrorService:
                 continue
             result = self.reconciler.reconcile(current.sync_id, record_exists=True)
             self._observations.pop(current.sync_id, None)
-            if result.state != "in_sync":
+            if result.retryable:
                 self._record_retry(current)
 
     def _run(self) -> None:

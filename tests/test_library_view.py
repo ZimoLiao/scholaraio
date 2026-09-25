@@ -698,3 +698,58 @@ def test_proceedings_bibtex_uses_child_metadata_and_volume_context(tmp_path: Pat
     assert "doi = {10.1000/proc}" in bibtex
     with pytest.raises(KeyError):
         get_proceedings_paper_bibtex(cfg, "missing-paper")
+
+
+def test_background_audit_does_not_block_list_or_detail(tmp_path, monkeypatch):
+    from scholaraio.services import library_view
+    from scholaraio.services.audit import Issue
+
+    cfg = _build_config({}, tmp_path)
+    _write_main_paper(cfg.papers_dir, "Paper", paper_id="paper", title="Paper")
+    started, release, finished = threading.Event(), threading.Event(), threading.Event()
+
+    def slow_audit(_root):
+        started.set()
+        assert release.wait(5)
+        return [Issue("Paper", "warning", "test", "Example")]
+
+    monkeypatch.setattr(library_view, "audit_papers", slow_audit)
+    try:
+        view = library_view.build_main_library_view(cfg, background_audit=True)
+        assert started.wait(2)
+        assert view["audit"]["state"] == "running"
+        detail = library_view.get_main_paper_detail(cfg, "paper", background_audit=True)
+        assert detail["title"] == "Paper"
+        assert detail["audit"]["state"] == "running"
+    finally:
+        release.set()
+        # Wait for completion so the monkeypatch cannot leak across worker lifetime.
+        for _ in range(200):
+            if library_view.main_audit_status(cfg.papers_dir)["state"] == "ready":
+                finished.set()
+                break
+            time.sleep(0.01)
+    assert finished.is_set()
+    ready = library_view.build_main_library_view(cfg, background_audit=True)
+    assert ready["issue_totals"]["warning"] == 1
+
+
+def test_cached_pdf_lookup_validates_current_identity_and_survives_rename(tmp_path, monkeypatch):
+    from scholaraio.services import library_view
+
+    cfg = _build_config({}, tmp_path)
+    paper = _write_main_paper(cfg.papers_dir, "Original", paper_id="paper", title="Paper", write_pdf=True)
+    library_view.build_main_library_view(cfg)
+    original_iterator = library_view.iter_paper_dirs
+    monkeypatch.setattr(library_view, "iter_paper_dirs", lambda _: (_ for _ in ()).throw(AssertionError("full scan")))
+    assert library_view.get_main_paper_pdf(cfg, "paper").parent == paper
+    monkeypatch.setattr(library_view, "iter_paper_dirs", original_iterator)
+    renamed = paper.with_name("Renamed")
+    paper.rename(renamed)
+    assert library_view.get_main_paper_pdf(cfg, "paper").parent == renamed
+    meta_file = renamed / "meta.json"
+    meta = json.loads(meta_file.read_text())
+    meta["id"] = "different"
+    meta_file.write_text(json.dumps(meta))
+    with pytest.raises(KeyError):
+        library_view.get_main_paper_pdf(cfg, "paper")

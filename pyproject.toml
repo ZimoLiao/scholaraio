@@ -71,6 +71,9 @@ full = [
     "modelscope>=1.10",
     "curl-cffi>=0.5",
 ]
+browser-test = [
+    "playwright>=1.49",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
@@ -166,6 +169,7 @@ testpaths = ["tests"]
 addopts = "-v --tb=short"
 markers = [
     "slow: marks tests that need network or heavy computation",
+    "browser: opt-in real Chromium interaction tests",
 ]
 
 # ---------- coverage ----------

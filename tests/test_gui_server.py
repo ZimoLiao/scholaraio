@@ -2719,3 +2719,135 @@ def test_cmd_gui_delegates_to_read_only_server(monkeypatch, tmp_path):
     cmd_gui(SimpleNamespace(host="127.0.0.1", port=18888, no_open=True), cfg)
 
     assert seen == {"cfg": cfg, "host": "127.0.0.1", "port": 18888, "open_browser": False}
+
+
+def test_pdf_range_head_and_conditional_delivery(tmp_path):
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+    with _running_library_server(cfg) as (_server, base):
+        url = base + "/api/main/pdf?id=action-paper"
+        with urlopen(url) as response:
+            full = response.read()
+            etag = response.headers["ETag"]
+        for requested, expected in [("bytes=0-4", full[:5]), ("bytes=5-", full[5:]), ("bytes=-3", full[-3:])]:
+            with urlopen(Request(url, headers={"Range": requested})) as response:
+                assert response.status == 206
+                assert response.read() == expected
+                assert response.headers["Accept-Ranges"] == "bytes"
+                assert response.headers["Content-Range"].endswith(f"/{len(full)}")
+        with urlopen(Request(url, method="HEAD", headers={"Range": "bytes=0-4"})) as response:
+            assert response.status == 200
+            assert int(response.headers["Content-Length"]) == len(full)
+            assert response.read() == b""
+        for requested in ("bytes=999999-", "bytes=-0", "bytes=8-2"):
+            with pytest.raises(HTTPError) as exc:
+                urlopen(Request(url, headers={"Range": requested}))
+            assert exc.value.code == 416
+            assert exc.value.headers["Content-Range"] == f"bytes */{len(full)}"
+        with pytest.raises(HTTPError) as exc:
+            urlopen(Request(url, headers={"If-None-Match": etag}))
+        assert exc.value.code == 304
+        assert exc.value.headers["X-Frame-Options"] == "SAMEORIGIN"
+        with urlopen(Request(url, headers={"Range": "bytes=0-4", "If-Range": '"outdated"'})) as response:
+            assert response.status == 200
+            assert response.read() == full
+        pdf = cfg.papers_dir / "Doe-2026-Action" / "Doe-2026-Action.pdf"
+        pdf.write_bytes(full + b"changed")
+        with urlopen(Request(url, headers={"If-None-Match": etag})) as response:
+            assert response.status == 200
+            assert response.headers["ETag"] != etag
+
+
+def test_library_conditional_request_changes_after_metadata_edit(tmp_path):
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+    from scholaraio.services.library_view import build_main_library_view
+    from scholaraio.stores.papers import update_meta
+
+    build_main_library_view(cfg)  # Complete the audit before comparing versions.
+    with _running_library_server(cfg) as (_server, base):
+        url = base + "/api/main/papers"
+        _payload, headers = _json_response(url)
+        with pytest.raises(HTTPError) as exc:
+            urlopen(Request(url, headers={"If-None-Match": headers["ETag"]}))
+        assert exc.value.code == 304
+        update_meta(cfg.papers_dir / "Doe-2026-Action", title="Changed")
+        with urlopen(Request(url, headers={"If-None-Match": headers["ETag"]})) as response:
+            assert response.status == 200
+            assert json.loads(response.read())["papers"][0]["title"] == "Changed"
+
+
+def test_native_pdf_conflict_returns_409_without_launch(tmp_path):
+    from scholaraio.services.pdf_edit_mirror import PdfOpenPreparation
+
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+    conflict = {"state": "conflict", "retryable": False, "message": "Both PDFs changed"}
+    service = SimpleNamespace(
+        prepare_for_open=lambda _: PdfOpenPreparation(tmp_path / "mirror.pdf", False, conflict),
+        status=lambda *_: conflict,
+        stop=Mock(),
+    )
+    with (
+        patch("scholaraio.services.pdf_edit_mirror.PdfEditMirrorService.for_wsl", return_value=service),
+        patch("scholaraio.services.system_open.open_wsl_windows_file") as launch,
+        _running_library_server(cfg, native_target="windows") as (_server, base),
+    ):
+        capabilities, _headers = _json_response(base + "/api/capabilities")
+        with pytest.raises(HTTPError) as exc:
+            urlopen(
+                _post_json(
+                    base + "/api/main/open-pdf", {"id": "action-paper"}, token=capabilities["csrf_token"], origin=base
+                )
+            )
+        assert exc.value.code == 409
+        assert json.loads(exc.value.read())["code"] == "pdf_sync_conflict"
+        launch.assert_not_called()
+
+
+def test_browser_does_not_download_a_pdf_after_sync_conflict():
+    result = _run_library_app_vm(
+        """
+state.capabilities.nativePdfOpen = true;
+state.capabilities.pdfDelivery = { mode: "native", target: "windows" };
+state.detail = { paper_id: "paper", has_pdf: true, pdf_url: "/api/main/pdf?id=paper" };
+fetch = async () => ({ ok: false, status: 409, json: async () => ({ error: "Both PDFs changed", code: "pdf_sync_conflict" }) });
+await deliverSelectedPdf();
+return { href: document.__clickedHref, message: els.toast.textContent, busy: state.actionBusy.nativePdf };
+"""
+    )
+    assert result["href"] == ""
+    assert "Both PDFs changed" in result["message"]
+    assert result["busy"] is False
+
+
+def test_browser_reuses_304_list_payload():
+    result = _run_library_app_vm(
+        """
+let calls = 0;
+let conditionalHeader = "";
+fetch = async (_url, options) => {
+  calls++;
+  if (calls === 1) return { ok: true, status: 200, headers: { get: () => '"version"' }, json: async () => ({ papers: [{ paper_id: "a" }] }) };
+  conditionalHeader = options.headers["If-None-Match"];
+  return { ok: false, status: 304, json: async () => { throw new Error("304 has no body"); } };
+};
+const first = await fetchJson("/conditional-test", { conditional: true });
+const second = await fetchJson("/conditional-test", { conditional: true });
+return { identical: first === second, conditionalHeader };
+"""
+    )
+    assert result == {"identical": True, "conditionalHeader": '"version"'}
+
+
+def test_browser_does_not_duplicate_delivery_when_native_open_times_out():
+    result = _run_library_app_vm(
+        """
+state.capabilities.nativePdfOpen = true;
+state.capabilities.pdfDelivery = { mode: "native", target: "windows" };
+state.detail = { paper_id: "paper", has_pdf: true, pdf_url: "/api/main/pdf?id=paper" };
+fetch = async () => { const error = new Error("deadline"); error.name = "TimeoutError"; throw error; };
+await deliverSelectedPdf();
+return { href: document.__clickedHref, message: els.toast.textContent, busy: state.actionBusy.nativePdf };
+"""
+    )
+    assert result["href"] == ""
+    assert "Check the default viewer" in result["message"]
+    assert result["busy"] is False
