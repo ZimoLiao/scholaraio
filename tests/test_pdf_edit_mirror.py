@@ -951,7 +951,7 @@ def test_destination_publication_preserves_late_saves(tmp_path, monkeypatch, tim
             handle.close()
     assert result.state == "conflict"
     preserved = [destination, *destination.parent.glob(".scholaraio-pdf-recovery/**/*.pdf")]
-    assert any(p.read_bytes() == late for p in preserved)
+    assert any(p.is_file() and p.read_bytes() == late for p in preserved)
 
 
 def test_old_open_handle_save_after_success_is_detected_on_next_reconcile(tmp_path):
@@ -971,4 +971,4 @@ def test_old_open_handle_save_after_success_is_detected_on_next_reconcile(tmp_pa
         os.fsync(handle.fileno())
     assert reconciler.reconcile(record.sync_id, record_exists=True).state == "conflict"
     retained = list(record.mirror_path.parent.glob(".scholaraio-pdf-recovery/**/*.pdf"))
-    assert any(p.read_bytes() == late for p in retained)
+    assert any(p.is_file() and p.read_bytes() == late for p in retained)
