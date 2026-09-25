@@ -7,6 +7,7 @@ const state = {
   pageOffset: 0,
   filterTimer: null,
   recovery: null,
+  recoveryRequestSeq: 0,
   rows: { main: [], proceedings: [] },
   payload: { main: null, proceedings: null },
   detail: null,
@@ -355,7 +356,9 @@ function renderFilters() {
 
 function renderMetrics() {
   const payload = activePayload();
-  if (payload?.refresh_error) setSearchDiagnostics("error", payload.refresh_error);
+  const refreshError = document.getElementById("library-refresh-error");
+  refreshError.textContent = payload?.refresh_error || "";
+  refreshError.hidden = !payload?.refresh_error;
   const root = payload?.root || "";
   els.sourceTitle.textContent = state.tab === "main" ? "Main Papers" : "Proceedings";
   els.sourceRoot.textContent = root || "--";
@@ -469,6 +472,7 @@ async function runRankedSearch() {
 
 function markRankedSearchDirty() {
   state.searchRequestSeq += 1;
+  setSearchButtonBusy(false);
   if (state.searchMode === "metadata") {
     state.ranked = null;
     renderTableAndReconcileSelection();
@@ -730,15 +734,22 @@ function renderPdfSyncStatus(status) {
     : "";
 }
 
+function closePdfRecovery() {
+  state.recoveryRequestSeq += 1;
+  state.recovery = null;
+  document.getElementById("pdf-recovery-panel").hidden = true;
+}
+
 async function inspectPdfRecovery() {
   const source = state.tab;
   const id = state.selected[source];
   if (!id) return;
+  const requestSeq = ++state.recoveryRequestSeq;
   const panel = document.getElementById("pdf-recovery-panel");
   const message = document.getElementById("pdf-recovery-message");
   try {
     const snapshot = await fetchJson(`/api/${source}/pdf-recovery?id=${encodeURIComponent(id)}`);
-    if (state.tab !== source || state.selected[source] !== id) return;
+    if (state.recoveryRequestSeq !== requestSeq || state.tab !== source || state.selected[source] !== id) return;
     state.recovery = { source, id, snapshot };
     panel.hidden = false;
     document.getElementById("pdf-readers-closed").checked = false;
@@ -782,11 +793,12 @@ async function inspectPdfRecovery() {
             await fetchJson(`/api/${source}/resolve-pdf`, { method: "POST",
               headers: { "Content-Type": "application/json", "X-ScholarAIO-CSRF": state.capabilities.csrfToken },
               body: JSON.stringify({ id, token: snapshot.token, version: version.id, readers_closed: true }) });
-            state.recovery = null;
-            panel.hidden = true;
+            if (state.recovery?.snapshot !== snapshot) return;
+            closePdfRecovery();
             showToast("Selected PDF synchronized. Recovery copies retained.");
             await refreshPdfSyncStatus();
           } catch (err) {
+            if (state.recovery?.snapshot !== snapshot) return;
             message.textContent = `${String(err)} Reopen Review PDF versions to inspect the latest copies.`;
           } finally { use.disabled = false; }
         });
@@ -794,7 +806,9 @@ async function inspectPdfRecovery() {
       }
       list.appendChild(row);
     }
-  } catch (err) { showToast(`Could not inspect PDF versions: ${String(err)}`, "error"); }
+  } catch (err) {
+    if (state.recoveryRequestSeq === requestSeq) showToast(`Could not inspect PDF versions: ${String(err)}`, "error");
+  }
 }
 
 function stopPdfSyncPolling() {
@@ -872,6 +886,7 @@ function renderDetail(detail) {
     }
   }
   if (!detail) {
+    closePdfRecovery();
     state.detail = null;
     els.detailTitle.textContent = "Select a record";
     els.metadataGrid.textContent = "";
@@ -1079,9 +1094,8 @@ function deferBackgroundRefresh() {
 }
 
 async function selectRow(paperId, { background = false } = {}) {
-  if (state.recovery && (state.recovery.id !== paperId || state.recovery.source !== state.tab)) {
-    state.recovery = null;
-    document.getElementById("pdf-recovery-panel").hidden = true;
+  if (state.selected[state.tab] !== paperId || (state.recovery && state.recovery.source !== state.tab)) {
+    closePdfRecovery();
   }
   const requestTab = state.tab;
   const requestSeq = ++state.detailRequestSeq;
@@ -1178,6 +1192,7 @@ function schedulePoll() {
 
 function switchTab(tab) {
   if (state.tab === tab) return;
+  closePdfRecovery();
   state.tab = tab;
   state.pageOffset = 0;
   state.searchRequestSeq += 1;
@@ -1252,10 +1267,7 @@ function bindEvents() {
   });
   els.sourceCopyButton.addEventListener("click", copySourceRoot);
   document.getElementById("pdf-recovery-button").addEventListener("click", inspectPdfRecovery);
-  document.getElementById("pdf-recovery-close").addEventListener("click", () => {
-    state.recovery = null;
-    document.getElementById("pdf-recovery-panel").hidden = true;
-  });
+  document.getElementById("pdf-recovery-close").addEventListener("click", closePdfRecovery);
   els.copyBibtexButton.addEventListener("click", copySelectedBibtex);
   els.previewPdfButton.addEventListener("click", previewSelectedPdf);
   els.nativePdfButton.addEventListener("click", deliverSelectedPdf);

@@ -2939,3 +2939,70 @@ def test_paged_proceedings_supports_conditional_response(tmp_path):
         with pytest.raises(HTTPError) as error:
             urlopen(Request(url, headers={"If-None-Match": headers["ETag"]}))
         assert error.value.code == 304
+
+
+def test_recovery_inspection_cannot_reopen_after_switching_tabs():
+    result = _run_library_app_vm(
+        """
+state.tab = "main";
+state.selected.main = "paper";
+document.getElementById("pdf-recovery-panel").hidden = true;
+refreshActive = async () => {};
+let complete;
+fetch = () => new Promise(resolve => { complete = resolve; });
+const pending = inspectPdfRecovery();
+switchTab("proceedings");
+switchTab("main");
+complete({ ok: true, status: 200, json: async () => ({ token: "old", versions: [] }) });
+await pending;
+return { recovery: state.recovery, hidden: document.getElementById("pdf-recovery-panel").hidden };
+"""
+    )
+    assert result == {"recovery": None, "hidden": True}
+
+
+def test_recovered_scan_clears_its_error_without_erasing_search_diagnostics():
+    result = _run_library_app_vm(
+        """
+state.tab = "main";
+setSearchDiagnostics("degraded", "Semantic index needs updating");
+state.payload.main = { refresh_error: "Library refresh failed" };
+renderMetrics();
+const error = document.getElementById("library-refresh-error");
+const before = { message: error.textContent, hidden: error.hidden };
+state.payload.main = { refresh_error: "" };
+renderMetrics();
+return { before, cleared: error.hidden && error.textContent === "", search: els.searchDiagnostics.textContent };
+"""
+    )
+    assert result == {
+        "before": {"message": "Library refresh failed", "hidden": False},
+        "cleared": True,
+        "search": "Semantic index needs updating",
+    }
+
+
+def test_editing_filters_reenables_search_while_old_request_is_pending():
+    result = _run_library_app_vm(
+        """
+state.searchMode = "semantic";
+els.searchMode.value = "semantic";
+els.searchInput.value = "query";
+let complete;
+fetch = () => new Promise(resolve => { complete = resolve; });
+const pending = runRankedSearch();
+const wasBusy = state.searchBusy;
+els.titleFilter.value = "changed";
+syncFiltersFromControls();
+markRankedSearchDirty();
+const enabledBeforeCompletion = !state.searchBusy && !els.searchButton.disabled;
+complete({ ok: true, status: 200, json: async () => ({ results: [], diagnostics: { message: "stale" } }) });
+await pending;
+return { wasBusy, enabledBeforeCompletion, enabledAfter: !state.searchBusy && !els.searchButton.disabled, label: els.searchButton.textContent, message: els.searchDiagnostics.textContent };
+"""
+    )
+    assert result["wasBusy"] is True
+    assert result["enabledBeforeCompletion"] is True
+    assert result["enabledAfter"] is True
+    assert result["label"] == "Search"
+    assert "Filters changed" in result["message"]
