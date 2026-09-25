@@ -5,6 +5,8 @@ import multiprocessing
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
+import pytest
+
 from scholaraio.projects.workspace import add, create
 from scholaraio.stores.papers import modify_meta, read_meta, update_meta, write_meta
 
@@ -75,3 +77,83 @@ def test_rename_waits_for_an_active_metadata_transaction(tmp_path):
     assert not thread.is_alive()
     assert len(result) == 1
     assert result[0].exists()
+
+
+def test_workspace_refresh_serializes_with_add(tmp_path, monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    from scholaraio.projects.workspace import show
+    from scholaraio.services import index
+
+    create(tmp_path)
+    add(tmp_path, [], tmp_path / "unused.db", resolved=[{"id": "A", "dir_name": "old"}])
+    refreshing = threading.Event()
+    release = threading.Event()
+
+    def lookup(*_args):
+        refreshing.set()
+        assert release.wait(5)
+        return {"dir_name": "new"}
+
+    monkeypatch.setattr(index, "lookup_paper", lookup)
+    with ThreadPoolExecutor(2) as pool:
+        refresh = pool.submit(show, tmp_path, tmp_path / "unused.db")
+        assert refreshing.wait(5)
+        adding = pool.submit(_add_reference, (str(tmp_path), 2))
+        try:
+            import concurrent.futures
+
+            with pytest.raises(concurrent.futures.TimeoutError):
+                adding.result(timeout=0.1)
+        finally:
+            release.set()
+        refresh.result(timeout=5)
+        adding.result(timeout=5)
+    entries = json.loads((tmp_path / "refs" / "papers.json").read_text())
+    assert {entry["id"] for entry in entries} == {"A", "2"}
+    assert entries[0]["dir_name"] == "new"
+
+
+def test_rename_new_path_waits_for_registry_commit(tmp_path, monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError
+
+    import pytest
+
+    from scholaraio.services.ingest_metadata import _writer
+
+    paper = tmp_path / "Original"
+    paper.mkdir()
+    write_meta(paper, {"id": "paper", "title": "First", "year": 2026})
+    moved = threading.Event()
+    release = threading.Event()
+    commits = []
+
+    def commit(_db, _id, directory):
+        if not commits:
+            moved.set()
+            assert release.wait(5)
+        commits.append(directory)
+
+    monkeypatch.setattr(_writer, "_update_registry_dir_name", commit)
+    first_path = tmp_path / "Unknown-2026-First"
+
+    def second_rename():
+        update_meta(first_path, title="Second")
+        return _writer.rename_paper(first_path / "meta.json")
+
+    with ThreadPoolExecutor(2) as pool:
+        first = pool.submit(_writer.rename_paper, paper / "meta.json")
+        assert moved.wait(5)
+        second = pool.submit(second_rename)
+        try:
+            with pytest.raises(TimeoutError):
+                second.result(timeout=0.1)
+        finally:
+            release.set()
+        first.result(timeout=5)
+        final = second.result(timeout=5)
+    assert final.exists()
+    assert commits[-1] == final.parent
+    assert [p.name for p in commits] == ["Unknown-2026-First", "Unknown-2026-Second"]

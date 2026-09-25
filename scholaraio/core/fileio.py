@@ -26,7 +26,10 @@ def file_lock(path: Path, *, timeout: float = 30.0, create_parent: bool = False)
         path.parent.mkdir(parents=True, exist_ok=True)
     if not path.parent.is_dir():
         raise FileNotFoundError(f"Record directory no longer exists: {path.parent}")
-    identity = os.path.normcase(f"{path.parent.name}/{path.name}")
+    # Metadata transactions share one library lock: a path-derived per-record
+    # identity changes during rename, while an ID-derived one cannot coordinate
+    # initial creation or replacement of an ID. Hold this through registry commit.
+    identity = "library-metadata" if path.name == "meta.json" else os.path.normcase(f"{path.parent.name}/{path.name}")
     digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
     lock_path = path.parent.parent / f".scholaraio-{digest}.lock"
     with lock_path.open("a+b") as stream:

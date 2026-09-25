@@ -488,16 +488,17 @@ def show(ws_dir: Path, db_path: Path) -> list[dict]:
     """
     from scholaraio.services.index import lookup_paper
 
-    entries = _read(ws_dir)
-    changed = False
-    for e in entries:
-        record = lookup_paper(db_path, e["id"])
-        if record and record["dir_name"] != e.get("dir_name"):
-            e["dir_name"] = record["dir_name"]
-            changed = True
-    if changed:
-        _write(ws_dir, entries)
-    return entries
+    with file_lock(_paper_index_path(ws_dir), create_parent=True):
+        entries = _read(ws_dir)
+        changed = False
+        for e in entries:
+            record = lookup_paper(db_path, e["id"])
+            if record and record["dir_name"] != e.get("dir_name"):
+                e["dir_name"] = record["dir_name"]
+                changed = True
+        if changed:
+            _write(ws_dir, entries)
+        return entries
 
 
 def read_paper_ids(ws_dir: Path) -> set[str]:
