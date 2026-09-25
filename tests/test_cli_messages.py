@@ -2871,3 +2871,30 @@ class TestMigrationUpgrade:
         assert any("stores: workspace, citation_styles, papers" in msg for msg in messages)
         assert any("finalize_status: completed" in msg for msg in messages)
         assert any("verify_after_cleanup: passed" in msg for msg in messages)
+
+
+@pytest.mark.parametrize("action", ["show", "remove", "add"])
+def test_workspace_missing_or_concurrently_renamed_is_reported(tmp_path, monkeypatch, action):
+    from scholaraio.projects import workspace
+
+    messages = []
+    monkeypatch.setattr(cli, "ui", messages.append)
+    root = tmp_path / "projects"
+    root.mkdir()
+    cfg = SimpleNamespace(_root=tmp_path, workspace_dir=root, index_db=tmp_path / "unused.db")
+    args = Namespace(
+        ws_action=action, name="study", paper_refs=["paper"], add_all=False, add_topic=None, add_search=None
+    )
+    if action == "add":
+        workspace.create(root / "study")
+        original = workspace.add
+
+        def rename_before_add(*args, **kwargs):
+            workspace.rename(root, "study", "moved")
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(workspace, "add", rename_before_add)
+    cli.cmd_ws(args, cfg)
+    assert any("工作区不存在" in message for message in messages)
+    assert not (root / "study").exists()
+    assert not any("Added" in message or "Removed" in message for message in messages)

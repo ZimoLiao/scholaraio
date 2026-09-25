@@ -113,6 +113,15 @@ def _manifest_detail_lines(manifest: dict | None) -> list[str]:
 
 
 def cmd_ws(args: argparse.Namespace, cfg) -> None:
+    try:
+        _cmd_ws(args, cfg)
+    except FileNotFoundError as exc:
+        # A workspace may disappear between CLI lookup and the locked write.
+        # Report the stale path instead of recreating it or exposing a traceback.
+        _ui(str(exc))
+
+
+def _cmd_ws(args: argparse.Namespace, cfg) -> None:
     from scholaraio.projects import workspace as workspace_mod
 
     ws_root = _workspace_root(cfg)
