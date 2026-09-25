@@ -1129,6 +1129,7 @@ function chooseDefaultSelection() {
 }
 
 async function refreshActive({ keepSelection = true, background = false, force = false } = {}) {
+  if (validateYearRange()) return;
   const requestTab = state.tab;
   if (responseCache.size > 24) responseCache.clear();
   if (background && (deferBackgroundRefresh() || state.refreshInFlight[requestTab])) return;
@@ -1232,8 +1233,13 @@ function bindEvents() {
     input.addEventListener("input", () => {
       syncFiltersFromControls();
       const yearError = validateYearRange();
-      if (yearError) setSearchDiagnostics("error", yearError);
-      else markRankedSearchDirty();
+      if (yearError) {
+        state.searchRequestSeq += 1;
+        state.refreshRequestSeq[state.tab] += 1;
+        clearTimeout(state.filterTimer);
+        setSearchButtonBusy(false);
+        setSearchDiagnostics("error", yearError);
+      } else markRankedSearchDirty();
     });
   }
   els.searchInput.addEventListener("keydown", (event) => {

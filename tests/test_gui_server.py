@@ -3006,3 +3006,29 @@ return { wasBusy, enabledBeforeCompletion, enabledAfter: !state.searchBusy && !e
     assert result["enabledAfter"] is True
     assert result["label"] == "Search"
     assert "Filters changed" in result["message"]
+
+
+def test_invalid_year_input_rejects_pending_search_and_preserves_validation():
+    result = _run_library_app_vm(
+        """
+state.searchMode = "semantic";
+els.searchMode.value = "semantic";
+els.searchInput.value = "query";
+let complete;
+fetch = () => new Promise(resolve => { complete = resolve; });
+const pending = runRankedSearch();
+els.yearFromFilter.value = "20";
+els.yearFromFilter.dispatch("input");
+const enabledBeforeCompletion = !state.searchBusy && !els.searchButton.disabled;
+complete({ ok: true, status: 200, json: async () => ({ results: [{paper_id: "old"}], diagnostics: { message: "old response" } }) });
+await pending;
+let refreshRequests = 0;
+fetch = async () => { refreshRequests += 1; throw new Error("Invalid years must not be sent"); };
+await refreshActive({ background: true });
+return { enabledBeforeCompletion, ranked: state.ranked, message: els.searchDiagnostics.textContent, refreshRequests };
+"""
+    )
+    assert result["enabledBeforeCompletion"] is True
+    assert result["ranked"] is None
+    assert result["message"] == "Year from must be a four-digit year."
+    assert result["refreshRequests"] == 0
