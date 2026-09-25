@@ -59,3 +59,28 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev,office]"
       - run: pytest --cov --cov-report=term-missing
+
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev,browser-test]"
+      - run: python -m playwright install --with-deps chromium
+      - run: python -m pytest -q tests/test_gui_browser.py
+        env:
+          SCHOLARAIO_BROWSER_TESTS: "1"
+
+  windows-records:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: python -m pytest -q tests/test_store_concurrency.py tests/test_papers.py tests/test_workspace.py tests/test_writer.py tests/test_system_open.py
