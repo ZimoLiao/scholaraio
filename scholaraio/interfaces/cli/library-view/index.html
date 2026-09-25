@@ -67,7 +67,7 @@
             <button class="primary-button" id="search-button" type="button" hidden>Search</button>
           </div>
           <div class="search-diagnostics" id="search-diagnostics" role="status" aria-live="polite">
-            Metadata mode filters the loaded records instantly.
+            Metadata filters apply across the whole library.
           </div>
 
           <div class="filter-divider"></div>
@@ -113,8 +113,8 @@
         <div class="table-toolbar">
           <div id="records-toolbar-title">
             <div class="table-count" id="table-count">--</div>
-            <button id="page-previous" type="button" disabled>Previous</button>
-            <button id="page-next" type="button" disabled>Next</button>
+            <button class="soft-button compact-button" id="page-previous" type="button" disabled>Previous</button>
+            <button class="soft-button compact-button" id="page-next" type="button" disabled>Next</button>
           </div>
           <div class="pdf-toolbar-title" id="pdf-toolbar-title" hidden>
             <button class="soft-button" id="pdf-back-button" type="button">Back to records</button>
@@ -159,13 +159,13 @@
           </div>
           <div class="pdf-sync-status" id="pdf-sync-status" role="status" aria-live="polite" hidden></div>
 
-          <button id="pdf-recovery-button" type="button" hidden>Review PDF versions</button>
+          <button class="action-button" id="pdf-recovery-button" type="button" hidden>Review PDF versions</button>
           <section id="pdf-recovery-panel" class="detail-section" hidden>
             <h3>PDF versions</h3>
             <p>Preview or download both copies before choosing. Close all PDF readers first. All versions are retained.</p>
             <div id="pdf-recovery-versions"></div>
             <label><input id="pdf-readers-closed" type="checkbox"> I have closed all PDF readers</label>
-            <button id="pdf-recovery-close" type="button">Close</button>
+            <button class="soft-button compact-button" id="pdf-recovery-close" type="button">Close</button>
             <div id="pdf-recovery-message" role="status"></div>
           </section>
 

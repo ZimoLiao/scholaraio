@@ -391,7 +391,7 @@ def test_library_view_shell_omits_audit_chrome_and_keeps_pdf_actions_single_line
 
     css = (_static_dir() / "workflows.css").read_text(encoding="utf-8")
     detail_actions = css.split(".detail-actions {", 1)[1].split("}", 1)[0]
-    action_button = css.rsplit(".action-button {", 1)[1].split("}", 1)[0]
+    action_button = css.rsplit("\n.action-button {", 1)[1].split("}", 1)[0]
     assert "grid-template-columns:" in detail_actions
     assert "minmax(" in detail_actions
     assert "white-space: nowrap" in action_button

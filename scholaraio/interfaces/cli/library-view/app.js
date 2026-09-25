@@ -332,11 +332,11 @@ function updateSearchModeUi() {
   els.searchButton.setAttribute?.("aria-busy", state.searchBusy ? "true" : "false");
   els.searchButton.textContent = state.searchBusy ? "Searching…" : "Search";
   els.searchInput.placeholder =
-    state.searchMode === "metadata" ? "Filter loaded metadata" : `Enter a ${state.searchMode} search query`;
+    state.searchMode === "metadata" ? "Search library metadata" : `Enter a ${state.searchMode} search query`;
   if (proceedings) {
     setSearchDiagnostics("info", "Proceedings currently supports Metadata search and structured filters.");
   } else if (state.searchMode === "metadata") {
-    setSearchDiagnostics("info", "Metadata mode filters the loaded records instantly.");
+    setSearchDiagnostics("info", "Metadata filters apply across the whole library.");
   }
 }
 
@@ -409,7 +409,7 @@ async function runRankedSearch() {
   }
   if (state.searchMode === "metadata") {
     state.ranked = null;
-    setSearchDiagnostics("info", "Metadata mode filters the loaded records instantly.");
+    setSearchDiagnostics("info", "Metadata filters apply across the whole library.");
     renderTableAndReconcileSelection();
     return;
   }
@@ -747,6 +747,7 @@ async function inspectPdfRecovery() {
     list.textContent = "";
     for (const version of snapshot.versions) {
       const row = document.createElement("div");
+      row.className = "pdf-recovery-version";
       const label = document.createElement("p");
       const name = version.id === "canonical" ? "Library copy" : version.id === "mirror" ? "Windows viewer copy" : "Retained save";
       label.textContent = `${name}: ${version.size} bytes · ${new Date(version.mtime_ns / 1e6).toLocaleString()} · ${version.hash.slice(0, 12)}${version.valid ? "" : " (unavailable or invalid)"}`;
@@ -764,6 +765,7 @@ async function inspectPdfRecovery() {
           row.appendChild(document.createTextNode(" "));
         }
         const use = document.createElement("button");
+        use.className = "action-button";
         use.textContent = "Use this version for both copies";
         use.addEventListener("click", async () => {
           if (!document.getElementById("pdf-readers-closed").checked) {

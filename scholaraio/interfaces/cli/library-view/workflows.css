@@ -216,3 +216,49 @@ summary:focus-visible {
     animation-iteration-count: 1 !important;
   }
 }
+
+#records-toolbar-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+#pdf-recovery-button {
+  margin: 0 14px 12px;
+}
+
+#pdf-recovery-panel {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.pdf-recovery-version {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.pdf-recovery-version p {
+  margin: 0 0 6px;
+}
+
+.pdf-recovery-version .action-button {
+  display: block;
+  margin: 8px 0;
+}
+
+#pdf-recovery-message {
+  margin-top: 8px;
+  color: var(--muted);
+}
+
+#pdf-recovery-panel > h3,
+#pdf-recovery-panel > p {
+  margin: 0;
+}
+
+.pdf-recovery-version a {
+  display: inline-block;
+  margin-right: 8px;
+}
