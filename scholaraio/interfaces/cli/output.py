@@ -4,16 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from scholaraio.core.log import ui as _default_ui
-
 
 def _ui(message: str = "") -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        _default_ui(message)
-        return
-    cli_mod.ui(message)
+    from scholaraio.core import log
+
+    log.ui(message)
 
 
 def _print_search_result(idx: int, r: dict[str, Any], extra: str = "") -> None:

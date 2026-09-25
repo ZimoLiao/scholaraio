@@ -9,28 +9,22 @@ import tempfile
 from contextlib import ExitStack
 from pathlib import Path
 
+import scholaraio.interfaces.cli.paper as _dep_paper
+import scholaraio.interfaces.cli.paths as _dep_paths
+
 
 def _ui(msg: str = "") -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        from scholaraio.core.log import ui as log_ui
+    from scholaraio.core import log
 
-        log_ui(msg)
-        return
-    cli_mod.ui(msg)
+    log.ui(msg)
 
 
 def _default_inbox_dir(cfg) -> Path:
-    from scholaraio.interfaces.cli import compat as cli_mod
-
-    return cli_mod._default_inbox_dir(cfg)
+    return _dep_paths._default_inbox_dir(cfg)
 
 
 def _resolve_paper(paper_id: str, cfg) -> Path:
-    from scholaraio.interfaces.cli import compat as cli_mod
-
-    return cli_mod._resolve_paper(paper_id, cfg)
+    return _dep_paper._resolve_paper(paper_id, cfg)
 
 
 def _print_result(result) -> None:

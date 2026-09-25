@@ -215,6 +215,7 @@ document = {
   execCommand(command) { return command === "copy" && this.__execCopy; },
 };
 const context = {
+  URLSearchParams,
   document,
   elements,
   navigator: { clipboard: { writeText: async () => {} } },
@@ -1268,6 +1269,7 @@ const document = {{
   addEventListener() {{}},
 }};
 const context = {{
+  URLSearchParams,
   document,
   navigator: {{ clipboard: {{ writeText: async (value) => {{ context.__copied = value; }} }} }},
   fetch: async () => ({{ ok: true, json: async () => ({{ papers: [], total: 0 }}) }}),
@@ -1382,6 +1384,7 @@ const document = {{
 }};
 const pending = [];
 const context = {{
+  URLSearchParams,
   document,
   pending,
   navigator: {{ clipboard: {{ writeText: async () => {{}} }} }},
@@ -1522,6 +1525,7 @@ const document = {{
   addEventListener() {{}},
 }};
 const context = {{
+  URLSearchParams,
   document,
   navigator: {{ clipboard: {{ writeText: async () => {{}} }} }},
   fetch: async () => ({{ ok: false, status: 500, statusText: "Boom" }}),
@@ -1597,6 +1601,7 @@ const document = {{
   addEventListener() {{}},
 }};
 const context = {{
+  URLSearchParams,
   document,
   navigator: {{ clipboard: {{ writeText: async () => {{}} }} }},
   fetch: async () => ({{ ok: true, json: async () => ({{ papers: [], total: 0, issue_totals: {{}} }}) }}),
@@ -1664,6 +1669,7 @@ const document = {{
   addEventListener() {{}},
 }};
 const context = {{
+  URLSearchParams,
   document,
   __abstract: {abstract},
   __conclusion: {conclusion},
@@ -1746,6 +1752,7 @@ const document = {{
   addEventListener() {{}},
 }};
 const context = {{
+  URLSearchParams,
   document,
   __abstract: {abstract},
   navigator: {{ clipboard: {{ writeText: async () => {{}} }} }},
@@ -1838,6 +1845,7 @@ const document = {{
   addEventListener() {{}},
 }};
 const context = {{
+  URLSearchParams,
   document,
   fetch: async () => ({{ ok: true, json: async () => ({{ papers: [], total: 0 }}) }}),
   setInterval: () => 1,
@@ -2851,3 +2859,41 @@ return { href: document.__clickedHref, message: els.toast.textContent, busy: sta
     assert result["href"] == ""
     assert "Check the default viewer" in result["message"]
     assert result["busy"] is False
+
+
+def test_paged_library_rejects_bad_queries_and_uses_stable_revision(tmp_path):
+    cfg, _main, _child = _write_gui_action_fixtures(tmp_path)
+    with _running_library_server(cfg) as (_server, base):
+        page, headers = _json_response(base + "/api/main/papers?limit=1")
+        assert page["total"] == 1 and page["matched"] == 1
+        assert len(page["papers"]) == 1
+        assert page["revision"]
+        assert headers["ETag"]
+        for query in ("limit=1000", "limit=1&sort=unsafe", "limit=1&ids=%7B%7D"):
+            with pytest.raises(HTTPError) as error:
+                urlopen(base + "/api/main/papers?" + query)
+            assert error.value.code == 400
+
+
+def test_pdf_recovery_requires_csrf_and_matching_versions(tmp_path):
+    from tests.test_pdf_conflicts import conflict
+
+    cfg = _build_config({}, tmp_path)
+    store, paths, reconciler, record = conflict(tmp_path)
+    service = SimpleNamespace(store=store, paths=paths, reconciler=reconciler)
+    with _running_library_server(cfg) as (server, base):
+        server.RequestHandlerClass.pdf_edit_mirror_service = service
+        snapshot, _headers = _json_response(base + "/api/main/pdf-recovery?id=paper-id")
+        body = {"id": "paper-id", "token": snapshot["token"], "version": "mirror", "readers_closed": True}
+        with pytest.raises(HTTPError) as error:
+            urlopen(_post_json(base + "/api/main/resolve-pdf", body, origin=base))
+        assert error.value.code == 403
+        token = server.RequestHandlerClass.csrf_token
+        body["token"] = "stale"
+        with pytest.raises(HTTPError) as error:
+            urlopen(_post_json(base + "/api/main/resolve-pdf", body, origin=base, token=token))
+        assert error.value.code == 409
+        body["token"] = snapshot["token"]
+        with urlopen(_post_json(base + "/api/main/resolve-pdf", body, origin=base, token=token)) as response:
+            assert json.load(response)["status"]["state"] == "in_sync"
+        assert record.canonical_path.read_bytes() == record.mirror_path.read_bytes()

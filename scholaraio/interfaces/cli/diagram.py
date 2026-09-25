@@ -9,43 +9,30 @@ import re
 import sys
 from pathlib import Path
 
+import scholaraio.interfaces.cli.paper as _dep_paper
+import scholaraio.interfaces.cli.paths as _dep_paths
+
 
 def _ui(msg: str = "") -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        from scholaraio.core.log import ui as log_ui
+    from scholaraio.core import log
 
-        log_ui(msg)
-        return
-    cli_mod.ui(msg)
+    log.ui(msg)
 
 
 def _log_error(msg: str, *args) -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        logging.getLogger(__name__).error(msg, *args)
-        return
-    cli_mod._log.error(msg, *args)
+    logging.getLogger(__name__).error(msg, *args)
 
 
 def _resolve_paper(paper_id: str, cfg):
-    from scholaraio.interfaces.cli import compat as cli_mod
-
-    return cli_mod._resolve_paper(paper_id, cfg)
+    return _dep_paper._resolve_paper(paper_id, cfg)
 
 
 def _workspace_root(cfg) -> Path:
-    from scholaraio.interfaces.cli import compat as cli_mod
-
-    return cli_mod._workspace_root(cfg)
+    return _dep_paths._workspace_root(cfg)
 
 
 def _workspace_figures_dir(cfg) -> Path:
-    from scholaraio.interfaces.cli import compat as cli_mod
-
-    return cli_mod._workspace_figures_dir(cfg)
+    return _dep_paths._workspace_figures_dir(cfg)
 
 
 def cmd_diagram(args: argparse.Namespace, cfg) -> None:

@@ -3,52 +3,35 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import logging
 import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 
 
 def _ui(msg: str = "") -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        from scholaraio.core.log import ui as log_ui
+    from scholaraio.core import log
 
-        log_ui(msg)
-        return
-    cli_mod.ui(msg)
+    log.ui(msg)
 
 
 def _log_error(msg: str, *args) -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        logging.getLogger(__name__).error(msg, *args)
-        return
-    cli_mod._log.error(msg, *args)
+    logging.getLogger(__name__).error(msg, *args)
 
 
 def _log_warning(msg: str, *args) -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        logging.getLogger(__name__).warning(msg, *args)
-        return
-    cli_mod._log.warning(msg, *args)
+    logging.getLogger(__name__).warning(msg, *args)
 
 
 def _concurrent_futures():
-    from scholaraio.interfaces.cli import compat as cli_mod
-
-    return cli_mod.concurrent.futures
+    return concurrent.futures
 
 
 def _sleep(seconds: float) -> None:
-    from scholaraio.interfaces.cli import compat as cli_mod
-
-    cli_mod.time.sleep(seconds)
+    time.sleep(seconds)
 
 
 def cmd_enrich_toc(args: argparse.Namespace, cfg) -> None:

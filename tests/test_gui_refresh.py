@@ -36,6 +36,7 @@ let selection = "";
 let calls = [];
 let handler;
 const context = {
+  URLSearchParams,
   document,
   getSelection: () => ({ toString: () => selection }),
   ScholarAIORendering: { text: String, formatDate: String, renderMarkdown() {} },

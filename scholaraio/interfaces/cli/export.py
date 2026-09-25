@@ -7,37 +7,25 @@ import logging
 import sys
 from pathlib import Path
 
+import scholaraio.interfaces.cli.paths as _dep_paths
+
 
 def _ui(msg: str = "") -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        from scholaraio.core.log import ui as log_ui
+    from scholaraio.core import log
 
-        log_ui(msg)
-        return
-    cli_mod.ui(msg)
+    log.ui(msg)
 
 
 def _log_error(msg: str, *args) -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        logging.getLogger(__name__).error(msg, *args)
-        return
-    cli_mod._log.error(msg, *args)
+    logging.getLogger(__name__).error(msg, *args)
 
 
 def _workspace_root(cfg) -> Path:
-    from scholaraio.interfaces.cli import compat as cli_mod
-
-    return cli_mod._workspace_root(cfg)
+    return _dep_paths._workspace_root(cfg)
 
 
 def _default_docx_output_path(cfg) -> Path:
-    from scholaraio.interfaces.cli import compat as cli_mod
-
-    return cli_mod._default_docx_output_path(cfg)
+    return _dep_paths._default_docx_output_path(cfg)
 
 
 def cmd_export(args: argparse.Namespace, cfg) -> None:

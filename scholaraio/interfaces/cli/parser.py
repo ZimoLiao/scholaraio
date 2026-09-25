@@ -63,6 +63,23 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
+    from scholaraio.interfaces.cli.pdf_recovery import cmd_pdf_recovery
+
+    recovery = sub.add_parser("pdf-recovery", help="Inspect, export, or explicitly resolve PDF mirror conflicts")
+    recovery_sub = recovery.add_subparsers(dest="action", required=True)
+    for action in ("inspect", "export", "resolve"):
+        command = recovery_sub.add_parser(action)
+        command.add_argument("paper_id")
+        command.add_argument("--source", choices=("main", "proceedings"), default="main")
+        if action != "inspect":
+            command.add_argument("--token", required=True, help="Snapshot token from inspect")
+            command.add_argument("--version", required=True, help="Version ID from inspect")
+        if action == "export":
+            command.add_argument("--output", type=str, required=True)
+        if action == "resolve":
+            command.add_argument("--readers-closed", action="store_true")
+        command.set_defaults(func=cmd_pdf_recovery)
+
     # --- index ---
     p_index = sub.add_parser("index", help="Build the FTS5 search index")
     p_index.set_defaults(func=cmd_index)

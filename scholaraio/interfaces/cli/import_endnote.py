@@ -6,28 +6,22 @@ import argparse
 import sys
 from pathlib import Path
 
+import scholaraio.interfaces.cli.attach_pdf as _dep_attach_pdf
+import scholaraio.interfaces.cli.dependencies as _dep_dependencies
+
 
 def _ui(msg: str = "") -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        from scholaraio.core.log import ui as log_ui
+    from scholaraio.core import log
 
-        log_ui(msg)
-        return
-    cli_mod.ui(msg)
+    log.ui(msg)
 
 
 def _check_import_error(exc: ImportError) -> None:
-    from scholaraio.interfaces.cli import compat as cli_mod
-
-    cli_mod._check_import_error(exc)
+    _dep_dependencies._check_import_error(exc)
 
 
 def _batch_convert_pdfs(cfg, *, enrich: bool = False) -> None:
-    from scholaraio.interfaces.cli import compat as cli_mod
-
-    cli_mod._batch_convert_pdfs(cfg, enrich=enrich)
+    _dep_attach_pdf._batch_convert_pdfs(cfg, enrich=enrich)
 
 
 def cmd_import_endnote(args: argparse.Namespace, cfg) -> None:

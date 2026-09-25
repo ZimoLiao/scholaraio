@@ -44,3 +44,49 @@ The existing loopback, exact-origin, CSRF, request-size, and stable-ID protectio
 This authority supersedes the earlier disposable Windows `%TEMP%\ScholarAIO` delivery behavior. Legacy random-prefixed files remain cleanup-only inputs and are never synchronized into the library.
 
 The pre-launch budget bounds settle and lock waiting; it is not a hard deadline for full-file validation or copying. Successful native-open responses expose `lookup`, `prepare` (WSL), and `launch` durations through `Server-Timing`, with stage-only log records. The viewer process accepting a launch is not proof that its PDF rendering is complete.
+
+## Explicit resolution and retained-version acknowledgements
+
+The shared `pdf_conflicts` service exposes inspect/export/resolve to the WebUI
+and `pdf-recovery` CLI. A resolution identifies the exact inspected set with a
+snapshot token, archives valid candidates, then publishes the explicit selection
+to both active paths using the existing no-clobber publication protocol. The
+caller must confirm readers are closed. Original displaced inodes are retained.
+
+The additive `pdf_recovery_ack` table in the existing mirror database stores the
+hash and file identity of reviewed retained versions. It does not own PDF bytes.
+The monitor skips hashing unchanged acknowledged versions; a subsequent write
+reopens conflict. An interrupted resolution leaves archives and retained files
+available for a later inspection. No automatic retention deadline is introduced.
+
+### Real desktop acceptance
+
+This is an explicit interactive release check, independent of headless browser
+and Windows filesystem CI. Prepare an isolated fixture library:
+
+```bash
+python scripts/validation/pdf_desktop_acceptance.py prepare \
+  --root workspace/_system/output/pdf-desktop-acceptance
+```
+
+Set `SCHOLARAIO_CONFIG` to the generated `config.yaml`, then run
+`python -m scholaraio.cli gui`. The script creates small and 128 MiB valid PDFs;
+it never launches a viewer itself and refuses an existing fixture root.
+
+Record Windows version, default viewer/version, WSL version and disk location.
+Measure first and repeat open to the first rendered page for each fixture.
+Annotate each in the default viewer, save and close it, then run:
+
+```bash
+python scripts/validation/pdf_desktop_acceptance.py check \
+  --root workspace/_system/output/pdf-desktop-acceptance
+```
+
+The check requires both files to match, differ from the original fixture, and
+report `in_sync`. Also visually verify the intended annotation in both copies.
+Repeat with the viewer retaining an old handle across a save, simultaneous edits
+on both sides, a viewer restart, a WebUI restart, and explicit conflict recovery.
+Require no lost annotation, no duplicate launch after a timeout, and retained
+versions available after failure. Record manual results beside the generated
+`acceptance-result.json`. A prepared fixture or passing hash check alone is not
+a completed desktop acceptance run.

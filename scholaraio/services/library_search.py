@@ -7,7 +7,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from scholaraio.stores.papers import authors_text, iter_paper_dirs, normalize_paper_type, read_meta
+from scholaraio.stores.library_state import library_records
+from scholaraio.stores.papers import authors_text, normalize_paper_type
 
 if TYPE_CHECKING:
     from scholaraio.core.config import Config
@@ -128,11 +129,8 @@ def _matches_filters(meta: dict, filters: LibrarySearchFilters) -> bool:
 
 def _candidate_records(cfg: Config, filters: LibrarySearchFilters) -> dict[str, dict]:
     records: dict[str, dict] = {}
-    for paper_dir in iter_paper_dirs(cfg.papers_dir):
-        try:
-            meta = read_meta(paper_dir)
-        except (OSError, ValueError):
-            continue
+    for directory, meta in library_records(cfg.papers_dir).items():
+        paper_dir = cfg.papers_dir / directory
         if not _matches_filters(meta, filters):
             continue
         paper_id = str(meta.get("id") or paper_dir.name)
@@ -353,6 +351,27 @@ def search_main_library(
     except (FileNotFoundError, ImportError, sqlite3.Error, OSError, RuntimeError, ValueError):
         raw_results = []
         diagnostics = _unavailable_diagnostics(normalized_mode)
+
+    if normalized_mode in {"semantic", "unified"} and diagnostics.get("semantic") == "available":
+        from scholaraio.services.vectors import _content_hash
+
+        try:
+            with sqlite3.connect(cfg.index_db) as connection:
+                hashes = dict(connection.execute("SELECT paper_id, content_hash FROM paper_vectors"))
+            pending = sum(
+                hashes.get(paper_id) != _content_hash(row["meta"].get("title") or "", row["meta"].get("abstract") or "")
+                for paper_id, row in candidates.items()
+            )
+            diagnostics["semantic_index"] = {
+                "state": "stale" if pending else "current",
+                "pending": pending,
+                "scope": "filtered_records",
+            }
+            if pending:
+                diagnostics["message"] += f" {pending} matching records need embedding updates; run scholaraio embed."
+                diagnostics["actions"].append(_action("scholaraio embed", "Update semantic embeddings"))
+        except sqlite3.Error:
+            diagnostics["semantic_index"] = {"state": "unknown", "scope": "filtered_records"}
 
     results = _normalize_results(raw_results, normalized_mode, candidates, bounded_limit)
     return {

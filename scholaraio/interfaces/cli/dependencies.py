@@ -28,14 +28,8 @@ def _check_import_error(e: ImportError) -> None:
     mod = getattr(e, "name", "") or ""
     # Match the top-level package name.
     top = mod.split(".")[0] if mod else ""
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        hints = _INSTALL_HINTS
-        logger = _log
-    else:
-        hints = cli_mod._INSTALL_HINTS
-        logger = cli_mod._log
+    hints = _INSTALL_HINTS
+    logger = _log
     hint = hints.get(top, "")
     if hint:
         logger.error("Missing dependency: %s\n  Install: %s", mod, hint)

@@ -141,3 +141,13 @@ class TestScrubMarkers:
 
         assert scrub_marker_path(paper_d).exists()
         assert is_scrubbed(paper_d) is True
+
+
+def test_metadata_array_is_a_repairable_validation_error(tmp_path):
+    import pytest
+
+    from scholaraio.stores.papers import read_meta
+
+    (tmp_path / "meta.json").write_text("[]")
+    with pytest.raises(ValueError, match="JSON object"):
+        read_meta(tmp_path)

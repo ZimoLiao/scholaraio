@@ -5,16 +5,11 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from scholaraio.core.log import ui as _default_ui
-
 
 def _ui(message: str = "") -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        _default_ui(message)
-        return
-    cli_mod.ui(message)
+    from scholaraio.core import log
+
+    log.ui(message)
 
 
 def _resolve_ws_paper_ids(args: argparse.Namespace, cfg) -> set[str] | None:
@@ -26,12 +21,7 @@ def _resolve_ws_paper_ids(args: argparse.Namespace, cfg) -> set[str] | None:
     if not workspace.validate_workspace_name(ws_name):
         raise ValueError(f"Invalid workspace name: {ws_name}")
 
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        workspace_root = _workspace_root
-    else:
-        workspace_root = cli_mod._workspace_root
+    workspace_root = _workspace_root
     ws_dir = workspace_root(cfg) / ws_name
     pids = workspace.read_paper_ids(ws_dir)
     if not pids:

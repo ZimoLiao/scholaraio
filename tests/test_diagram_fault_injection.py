@@ -15,6 +15,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import scholaraio.core.log as target_log
 from scholaraio.core.config import Config
 from scholaraio.interfaces.cli import compat as cli
 from scholaraio.services.diagram import (
@@ -478,7 +479,7 @@ class TestIoFaults:
 @pytest.fixture()
 def capture_ui(monkeypatch):
     messages: list[str] = []
-    monkeypatch.setattr(cli, "ui", messages.append)
+    monkeypatch.setattr(target_log, "ui", messages.append)
     return messages
 
 

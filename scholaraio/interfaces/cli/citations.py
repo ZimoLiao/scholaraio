@@ -6,43 +6,30 @@ import argparse
 import logging
 import sys
 
+import scholaraio.interfaces.cli.arguments as _dep_arguments
+import scholaraio.interfaces.cli.output as _dep_output
+
 
 def _ui(msg: str = "") -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        from scholaraio.core.log import ui as log_ui
+    from scholaraio.core import log
 
-        log_ui(msg)
-        return
-    cli_mod.ui(msg)
+    log.ui(msg)
 
 
 def _log_error(msg: str, *args) -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        logging.getLogger(__name__).error(msg, *args)
-        return
-    cli_mod._log.error(msg, *args)
+    logging.getLogger(__name__).error(msg, *args)
 
 
 def _resolve_top(args: argparse.Namespace, default: int) -> int:
-    from scholaraio.interfaces.cli import compat as cli_mod
-
-    return cli_mod._resolve_top(args, default)
+    return _dep_arguments._resolve_top(args, default)
 
 
 def _print_search_result(idx: int, result: dict, extra: str = "") -> None:
-    from scholaraio.interfaces.cli import compat as cli_mod
-
-    cli_mod._print_search_result(idx, result, extra=extra)
+    _dep_output._print_search_result(idx, result, extra=extra)
 
 
 def _print_search_next_steps() -> None:
-    from scholaraio.interfaces.cli import compat as cli_mod
-
-    cli_mod._print_search_next_steps()
+    _dep_output._print_search_next_steps()
 
 
 def cmd_top_cited(args: argparse.Namespace, cfg) -> None:

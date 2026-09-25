@@ -284,7 +284,10 @@ def read_meta(paper_d: Path) -> dict:
     """
     p = paper_d / "meta.json"
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
+        data = json.loads(p.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError(f"Metadata must be a JSON object: {p}")
+        return data
     except json.JSONDecodeError as e:
         raise ValueError(f"Malformed JSON in {p}: {e}") from e
 
@@ -306,6 +309,9 @@ def write_meta(paper_d: Path, data: dict) -> None:
 
 def _write_meta_unlocked(path: Path, data: dict) -> None:
     atomic_write_text(path, json.dumps(normalize_paper_metadata(data), indent=2, ensure_ascii=False) + "\n")
+    from scholaraio.stores.library_state import notify_metadata_write
+
+    notify_metadata_write(path)
 
 
 def modify_meta(paper_d: Path, edit: Callable[[dict], None]) -> dict:

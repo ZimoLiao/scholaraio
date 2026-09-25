@@ -36,10 +36,5 @@ def _record_search_metrics(
             },
         )
     except Exception as _e:
-        try:
-            from scholaraio.interfaces.cli import compat as cli_mod
-        except ImportError:
-            logger = _log
-        else:
-            logger = cli_mod._log
+        logger = _log
         logger.debug("metrics record failed: %s", _e)

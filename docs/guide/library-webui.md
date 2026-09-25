@@ -131,3 +131,51 @@ Metadata quality checks run in the background. The list can appear before the fi
 List requests use ETags so unchanged results return without the full payload. PDF delivery supports single byte ranges and validation with ETags, including after edits. Large first-time Windows opens still need a validated mirror copy; the UI reports preparation while this happens. `Server-Timing` on successful native-open requests separates lookup, mirror preparation, and launcher time. The settle/lock budget does not impose a hard deadline on file copying, and launcher completion does not mean the external viewer has finished rendering.
 
 When resolving a PDF conflict manually, stop the WebUI monitor first, save both the canonical library PDF and the Windows edit mirror elsewhere, then reconcile the desired PDF into both locations. Mirrors live under `%LOCALAPPDATA%\ScholarAIO\editable-pdfs\`; canonical files are in the configured library. Restart the WebUI after reconciling. This preserves a separate copy of each edit while synchronization is paused.
+
+## Paged browsing and explicit PDF recovery
+
+The table loads 100 records at a time. Previous/Next move between pages; metadata
+filters and sorting apply to the whole library. Type and volume choices also
+come from the whole library. A changed library revision resets an obsolete page
+to the first page. The Refresh button forces a new filesystem scan; automatic
+scans normally start about five seconds apart. Slow disks can extend this delay.
+Text selection, inline reading and conflict review suspend background DOM refresh.
+
+**Open in default viewer** remains the normal editable-PDF action. **Read in
+browser** uses the streaming PDF route without preparing a Windows edit mirror.
+Browser reading does not save changes into the library; download a copy if needed.
+The first editable open of a large PDF still needs a safe copy. The interface
+shows preparation status, and server logs/`Server-Timing` distinguish lookup,
+preparation and viewer-launch dispatch. Dispatch timing does not measure when
+Windows finishes rendering the document.
+
+When synchronization reports a conflict, choose **Review PDF versions**. Preview
+or download the canonical, mirror and retained reader-save versions. Download
+both if you want to keep independent copies. To synchronize a chosen version:
+
+1. Close all PDF readers, including recovery previews.
+2. Check the reader-closed confirmation.
+3. Choose **Use this version for both copies** beside the intended version.
+
+The server checks that the inspected versions have not changed. A concurrent
+save rejects the old decision; inspect again. All valid versions are archived
+under `data/state/pdf-edit-mirror/resolutions/` (or the configured state root),
+and displaced files remain beside their original PDF in
+`.scholaraio-pdf-recovery/`. Nothing is automatically deleted by conflict
+resolution. A late save through an old file handle reopens the conflict.
+
+Agents can use the same recovery service:
+
+```bash
+python -m scholaraio.cli pdf-recovery inspect PAPER_ID
+python -m scholaraio.cli pdf-recovery export PAPER_ID --token TOKEN --version canonical --output copy.pdf
+python -m scholaraio.cli pdf-recovery resolve PAPER_ID --token TOKEN --version mirror --readers-closed
+```
+
+`TOKEN` and version IDs come from `inspect`. Add `--source proceedings` for a
+proceedings paper. Export refuses to overwrite an existing output file. Keep
+recovery files until you have verified the intended annotations and closed every
+reader; storage cleanup remains an explicit manual action.
+
+See [Library projection contracts](../design-docs/library-projections.md) for
+index freshness, pagination and performance budgets.

@@ -174,14 +174,20 @@ def validate_pdf_candidate(
     if not stat.S_ISREG(before.st_mode):
         return PdfValidationResult(False, True, "PDF candidate is not a regular file")
     if before.st_size <= 0:
-        return PdfValidationResult(False, True, "PDF candidate is empty")
+        return PdfValidationResult(
+            False,
+            True,
+            "PDF candidate is empty",
+            content_hash=hashlib.sha256(b"").hexdigest(),
+            size=0,
+            mtime_ns=before.st_mtime_ns,
+            inode=before.st_ino,
+        )
 
     digest = hashlib.sha256()
     try:
         with candidate.open("rb") as stream:
             header = stream.read(5)
-            if header != b"%PDF-":
-                return PdfValidationResult(False, True, "PDF candidate has an invalid header")
             digest.update(header)
             while chunk := stream.read(1024 * 1024):
                 digest.update(chunk)
@@ -195,8 +201,26 @@ def validate_pdf_candidate(
     after_signature = (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
     if before_signature != after_signature:
         return PdfValidationResult(False, True, "PDF candidate changed while it was being read")
+    if header != b"%PDF-":
+        return PdfValidationResult(
+            False,
+            True,
+            "PDF candidate has an invalid header",
+            content_hash=digest.hexdigest(),
+            size=after.st_size,
+            mtime_ns=after.st_mtime_ns,
+            inode=after.st_ino,
+        )
     if b"%%EOF" not in tail:
-        return PdfValidationResult(False, True, "PDF candidate has no end-of-file marker")
+        return PdfValidationResult(
+            False,
+            True,
+            "PDF candidate has no end-of-file marker",
+            content_hash=digest.hexdigest(),
+            size=after.st_size,
+            mtime_ns=after.st_mtime_ns,
+            inode=after.st_ino,
+        )
 
     deep_checked = False
     if deep_validator is not None:
@@ -206,7 +230,14 @@ def validate_pdf_candidate(
             deep_ok, deep_message = deep_result
             if not deep_ok:
                 return PdfValidationResult(
-                    False, True, deep_message or "PDF deep structure check failed", deep_checked=True
+                    False,
+                    True,
+                    deep_message or "PDF deep structure check failed",
+                    deep_checked=True,
+                    content_hash=digest.hexdigest(),
+                    size=after.st_size,
+                    mtime_ns=after.st_mtime_ns,
+                    inode=after.st_ino,
                 )
     return PdfValidationResult(
         True,
@@ -217,6 +248,27 @@ def validate_pdf_candidate(
         inode=after.st_ino,
         deep_checked=deep_checked,
     )
+
+
+def recovery_identity(path: Path, root: Path) -> tuple[str, int, int, int]:
+    """Hash stable retained bytes, including a damaged PDF, without following links."""
+    if not _path_within(path, root) or path.is_symlink():
+        raise OSError("Recovery file is outside its managed root or is a symbolic link")
+    before = path.stat()
+    if not stat.S_ISREG(before.st_mode):
+        raise OSError("Recovery candidate is not a regular file")
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+        after = os.fstat(stream.fileno())
+
+    def signature(value: os.stat_result) -> tuple[int, int, int, int]:
+        return (value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+
+    if signature(before) != signature(after) or signature(before) != signature(path.stat()):
+        raise OSError("Recovery candidate changed while reading")
+    return digest.hexdigest(), after.st_size, after.st_mtime_ns, after.st_ino
 
 
 def _now_iso() -> str:
@@ -454,9 +506,20 @@ class PdfEditMirrorReconciler:
 
     def recovery_changed(self, record: PdfEditMirrorRecord) -> bool:
         """Detect saves through handles still referencing a displaced inode."""
+        acknowledged = self.store.recovery_acknowledgements(record.sync_id)
         for active in (record.canonical_path, record.mirror_path):
             recovery_dir = active.parent / ".scholaraio-pdf-recovery" / active.name
             for path in recovery_dir.glob("*.pdf"):
+                if str(path) in acknowledged:
+                    baseline = acknowledged[str(path)]
+                    try:
+                        current = path.stat()
+                        if (current.st_size, current.st_mtime_ns, current.st_ino) != baseline[1:]:
+                            if recovery_identity(path, active.parent)[0] != baseline[0]:
+                                return True
+                    except OSError:
+                        return True
+                    continue
                 fields = path.stem.split("_")
                 if len(fields) != 4:
                     return True

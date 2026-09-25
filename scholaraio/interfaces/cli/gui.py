@@ -21,6 +21,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
+from scholaraio.services.library_catalog import LibraryCatalog
+
 if TYPE_CHECKING:
     from scholaraio.core.config import Config
     from scholaraio.services.pdf_edit_mirror import PdfEditMirrorService
@@ -29,6 +31,7 @@ _LOG = logging.getLogger(__name__)
 
 _MAX_JSON_BODY_BYTES = 64 * 1024
 _NATIVE_PDF_OPEN_PATHS = frozenset({"/api/main/open-pdf", "/api/proceedings/open-pdf"})
+_PDF_RECOVERY_WRITE_PATHS = frozenset({"/api/main/resolve-pdf", "/api/proceedings/resolve-pdf"})
 _CONTENT_SECURITY_POLICY = (
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
     "connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
@@ -41,14 +44,9 @@ _SECURITY_HEADERS = {
 
 
 def _ui(msg: str = "") -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        from scholaraio.core.log import ui as log_ui
+    from scholaraio.core import log
 
-        log_ui(msg)
-        return
-    cli_mod.ui(msg)
+    log.ui(msg)
 
 
 def _static_dir() -> Path:
@@ -98,6 +96,7 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
     """Request handler configured by :func:`create_library_view_server`."""
 
     cfg: Config
+    catalogs: dict[str, LibraryCatalog]
     static_dir: Path
     csrf_token: str
     native_pdf_open_enabled: bool
@@ -255,6 +254,36 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
             return None
         return payload
 
+    def _send_catalog_page(self, source: str) -> None:
+        params = {
+            key: self._query_value(key)
+            for key in (
+                "offset",
+                "limit",
+                "sort",
+                "direction",
+                "revision",
+                "q",
+                "title",
+                "author",
+                "journal",
+                "doi",
+                "paper_type",
+                "volume",
+                "year_from",
+                "year_to",
+                "ids",
+                "refresh",
+            )
+            if self._query_value(key)
+        }
+        try:
+            payload = self.catalogs[source].page(params)
+        except (ValueError, TypeError) as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc), code="invalid_page_query")
+            return
+        self._send_library(payload)
+
     def _send_library(self, payload: dict) -> None:
         # generated_at describes response generation, not a library mutation.
         version = {key: value for key, value in payload.items() if key != "generated_at"}
@@ -405,7 +434,10 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
                 )
                 return
             if path == "/api/main/papers":
-                self._send_library(build_main_library_view(self.cfg, background_audit=True))
+                if self._query_value("limit"):
+                    self._send_catalog_page("main")
+                else:
+                    self._send_library(build_main_library_view(self.cfg, background_audit=True))
                 return
             if path == "/api/main/search":
                 try:
@@ -467,7 +499,10 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
                 )
                 return
             if path == "/api/proceedings/papers":
-                self._send_library(build_proceedings_library_view(self.cfg))
+                if self._query_value("limit"):
+                    self._send_catalog_page("proceedings")
+                else:
+                    self._send_library(build_proceedings_library_view(self.cfg))
                 return
             if path == "/api/proceedings/detail":
                 paper_id = self._required_query_id()
@@ -542,7 +577,10 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = urlparse(self.path).path
-        if path in _NATIVE_PDF_OPEN_PATHS:
+        if path in {"/api/main/pdf-recovery", "/api/proceedings/pdf-recovery"}:
+            self._handle_pdf_recovery(path.split("/")[2])
+            return
+        if path in (_NATIVE_PDF_OPEN_PATHS | _PDF_RECOVERY_WRITE_PATHS):
             self._reject_write(allowed="POST")
             return
         if path.startswith("/api/"):
@@ -555,7 +593,7 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
 
     def _reject_write(self, *, allowed: str | None = None) -> None:
         path = urlparse(getattr(self, "path", "")).path
-        allowed = allowed or ("POST" if path in _NATIVE_PDF_OPEN_PATHS else "GET, HEAD")
+        allowed = allowed or ("POST" if path in (_NATIVE_PDF_OPEN_PATHS | _PDF_RECOVERY_WRITE_PATHS) else "GET, HEAD")
         self.close_connection = True
         self._send_error_json(
             HTTPStatus.METHOD_NOT_ALLOWED,
@@ -677,8 +715,64 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
             headers={"Server-Timing": ", ".join(f"{key};dur={value:.1f}" for key, value in timings.items())},
         )
 
+    def _handle_pdf_recovery(self, source: str, *, write: bool = False) -> None:
+        from scholaraio.services.pdf_conflicts import (
+            PdfConflictChanged,
+            inspect_conflict,
+            resolve_conflict,
+            version_path,
+        )
+
+        service = self.pdf_edit_mirror_service
+        if service is None or not self.native_pdf_open_enabled:
+            self._send_error_json(HTTPStatus.FORBIDDEN, "PDF recovery is unavailable", code="recovery_disabled")
+            return
+        if write:
+            token = str(self.headers.get("X-ScholarAIO-CSRF") or "")
+            if not self._origin_is_same_loopback_server() or not secrets.compare_digest(token, self.csrf_token):
+                self._send_error_json(
+                    HTTPStatus.FORBIDDEN, "Recovery requires same-origin CSRF authorization", code="csrf_rejected"
+                )
+                return
+            payload = self._read_json_object()
+            if payload is None:
+                return
+        else:
+            payload = {key: self._query_value(key) for key in ("id", "version", "token", "download")}
+        try:
+            for key in ("id", "version", "token"):
+                if key in payload and not isinstance(payload[key], str):
+                    raise ValueError(f"{key} must be a string")
+            record = service.store.get_by_paper(source, payload.get("id", ""))
+            if record is None:
+                raise KeyError("No editable mirror exists for this paper")
+            if write:
+                if payload.get("readers_closed") is not True:
+                    raise ValueError("Close PDF readers before resolving and confirm readers_closed")
+                result = resolve_conflict(
+                    service.reconciler,
+                    record.sync_id,
+                    token=payload.get("token", ""),
+                    version=payload.get("version", ""),
+                )
+                self._send_json(HTTPStatus.OK, result)
+            elif payload.get("version"):
+                pdf = version_path(service.reconciler, record.sync_id, payload["version"], payload.get("token", ""))
+                self._send_pdf(pdf, attachment=payload.get("download") == "1")
+            else:
+                self._send_json(HTTPStatus.OK, inspect_conflict(service.reconciler, record.sync_id))
+        except PdfConflictChanged as exc:
+            self._send_error_json(HTTPStatus.CONFLICT, str(exc), code="pdf_versions_changed")
+        except KeyError as exc:
+            self._send_error_json(HTTPStatus.NOT_FOUND, str(exc), code="pdf_version_not_found")
+        except (ValueError, OSError, TimeoutError) as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc), code="pdf_recovery_failed")
+
     def do_POST(self) -> None:
         path = urlparse(getattr(self, "path", "")).path
+        if path in _PDF_RECOVERY_WRITE_PATHS:
+            self._handle_pdf_recovery(path.split("/")[2], write=True)
+            return
         if path == "/api/main/open-pdf":
             self._handle_native_pdf_open("main")
             return
@@ -719,6 +813,8 @@ class LibraryViewHTTPServer(ThreadingHTTPServer):
                 service.stop()
         finally:
             super().server_close()
+            for catalog in getattr(self.RequestHandlerClass, "catalogs", {}).values():
+                catalog.close()
 
 
 def create_library_view_server(cfg: Config, *, host: str = "127.0.0.1", port: int = 8765) -> ThreadingHTTPServer:
@@ -733,6 +829,9 @@ def create_library_view_server(cfg: Config, *, host: str = "127.0.0.1", port: in
     class ConfiguredHandler(LibraryViewRequestHandler):
         pass
 
+    from scholaraio.services.library_catalog import LibraryCatalog
+
+    ConfiguredHandler.catalogs = {source: LibraryCatalog(cfg, source) for source in ("main", "proceedings")}
     ConfiguredHandler.cfg = cfg
     ConfiguredHandler.static_dir = static_dir
     ConfiguredHandler.csrf_token = secrets.token_urlsafe(32)

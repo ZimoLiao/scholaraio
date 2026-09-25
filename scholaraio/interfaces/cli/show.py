@@ -6,61 +6,37 @@ import argparse
 import logging
 import sys
 
+import scholaraio.interfaces.cli.paper as _dep_paper
+
 
 def _ui(msg: str = "") -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        from scholaraio.core.log import ui as log_ui
+    from scholaraio.core import log
 
-        log_ui(msg)
-        return
-    cli_mod.ui(msg)
+    log.ui(msg)
 
 
 def _log_error(msg: str, *args) -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        logging.getLogger(__name__).error(msg, *args)
-        return
-    cli_mod._log.error(msg, *args)
+    logging.getLogger(__name__).error(msg, *args)
 
 
 def _log_warning(msg: str, *args) -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        logging.getLogger(__name__).warning(msg, *args)
-        return
-    cli_mod._log.warning(msg, *args)
+    logging.getLogger(__name__).warning(msg, *args)
 
 
 def _log_debug(msg: str, *args) -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        logging.getLogger(__name__).debug(msg, *args)
-        return
-    cli_mod._log.debug(msg, *args)
+    logging.getLogger(__name__).debug(msg, *args)
 
 
 def _resolve_paper(paper_id: str, cfg):
-    from scholaraio.interfaces.cli import compat as cli_mod
-
-    return cli_mod._resolve_paper(paper_id, cfg)
+    return _dep_paper._resolve_paper(paper_id, cfg)
 
 
 def _enrich_show_header(l1: dict, *, paper_d, requested_id: str, cfg) -> dict:
-    from scholaraio.interfaces.cli import compat as cli_mod
-
-    return cli_mod._enrich_show_header(l1, paper_d=paper_d, requested_id=requested_id, cfg=cfg)
+    return _dep_paper._enrich_show_header(l1, paper_d=paper_d, requested_id=requested_id, cfg=cfg)
 
 
 def _print_header(l1: dict) -> None:
-    from scholaraio.interfaces.cli import compat as cli_mod
-
-    cli_mod._print_header(l1)
+    _dep_paper._print_header(l1)
 
 
 def cmd_show(args: argparse.Namespace, cfg) -> None:
