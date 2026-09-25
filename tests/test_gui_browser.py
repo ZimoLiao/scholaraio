@@ -88,6 +88,11 @@ def test_real_browser_pages_and_filters_across_the_library(tmp_path):
         paper = cfg.papers_dir / str(i)
         paper.mkdir(parents=True)
         write_meta(paper, {"id": str(i), "title": f"Paper {i:03}", "authors": ["Jane Doe"], "year": 2026})
+    proceeding = cfg.proceedings_dir / "volume"
+    child = proceeding / "papers" / "child"
+    child.mkdir(parents=True)
+    write_meta(proceeding, {"id": "volume", "title": "Test Proceedings"})
+    write_meta(child, {"id": "child", "title": "Proceedings test paper", "year": 2026})
     with patch(
         "scholaraio.services.system_open.default_application_open_capability",
         return_value=DefaultApplicationOpenCapability(False, None, "browser test"),
@@ -109,6 +114,10 @@ def test_real_browser_pages_and_filters_across_the_library(tmp_path):
             page.locator("#title-filter").fill("Paper 204")
             expect(page.locator("#table-count")).to_have_text("1–1 / 1")
             expect(page.locator("#detail-title")).to_have_text("Paper 204")
+            page.locator("#clear-filters-button").click()
+            page.locator("#tab-proceedings").click()
+            expect(page.locator("#table-count")).to_have_text("1–1 / 1")
+            expect(page.locator("#detail-title")).to_have_text("Proceedings test paper")
             assert errors == []
             browser.close()
     finally:

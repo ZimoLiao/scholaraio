@@ -2927,3 +2927,15 @@ def test_pdf_recovery_downloads_damaged_snapshot_without_preview(tmp_path):
         with pytest.raises(HTTPError) as error:
             urlopen(endpoint + "&download=1")
         assert error.value.code == 409
+
+
+def test_paged_proceedings_supports_conditional_response(tmp_path):
+    cfg, _main, _child = _write_gui_action_fixtures(tmp_path)
+    with _running_library_server(cfg) as (_server, base):
+        url = base + "/api/proceedings/papers?limit=100"
+        page, headers = _json_response(url)
+        assert page["total"] == page["matched"] == 1
+        assert len(page["papers"]) == 1
+        with pytest.raises(HTTPError) as error:
+            urlopen(Request(url, headers={"If-None-Match": headers["ETag"]}))
+        assert error.value.code == 304

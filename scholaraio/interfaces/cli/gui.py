@@ -287,8 +287,8 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
     def _send_library(self, payload: dict) -> None:
         # generated_at describes response generation, not a library mutation.
         version = {key: value for key, value in payload.items() if key != "generated_at"}
-        if "audit" in version:
-            version["audit"] = {"state": version["audit"]["state"]}
+        if version.get("audit"):
+            version["audit"] = {"state": version["audit"].get("state", "")}
         etag = '"' + hashlib.sha256(_json_bytes(version)).hexdigest() + '"'
         headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
         if self._etag_matches(etag):
