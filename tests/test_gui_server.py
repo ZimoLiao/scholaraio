@@ -415,7 +415,6 @@ def test_library_view_shell_exposes_advanced_search_and_record_actions(tmp_path)
         "year-from-filter",
         "year-to-filter",
         "journal-filter",
-        "doi-filter",
         "type-filter",
         "clear-filters-button",
         "copy-bibtex-button",
@@ -424,6 +423,8 @@ def test_library_view_shell_exposes_advanced_search_and_record_actions(tmp_path)
     ):
         assert f'id="{control_id}"' in html
     assert 'id="search-diagnostics"' in html
+    assert 'id="doi-filter"' not in html
+    assert ">Metadata</div>" not in html
     assert 'aria-live="polite"' in html
     assert 'id="toast"' in html
     assert 'role="status"' in html
@@ -497,7 +498,6 @@ def test_library_view_app_combines_structured_filters_and_clears_them() -> None:
     ["year-from-filter", "2020"],
     ["year-to-filter", "2024"],
     ["journal-filter", "fluid"],
-    ["doi-filter", "10.1000"],
     ["type-filter", "journal-article"],
   ]) elements.get(id).value = value;
   clearAllFilters();
@@ -519,7 +519,6 @@ def test_library_view_app_combines_structured_filters_and_clears_them() -> None:
       elements.get("year-from-filter").value,
       elements.get("year-to-filter").value,
       elements.get("journal-filter").value,
-      elements.get("doi-filter").value,
       elements.get("type-filter").value,
     ],
   };
@@ -535,7 +534,7 @@ def test_library_view_app_combines_structured_filters_and_clears_them() -> None:
     assert payload["ranked"] is None
     assert payload["sortKey"] == "year"
     assert payload["sortDir"] == "desc"
-    assert payload["controlValues"] == ["", "", "", "", "", "", "", ""]
+    assert payload["controlValues"] == ["", "", "", "", "", "", ""]
 
 
 def test_library_view_app_ranked_search_orders_results_and_ignores_stale_responses() -> None:
@@ -655,7 +654,7 @@ context.fetch = async (url) => {
     assert payload["diagnosticsKind"] == "degraded"
     assert "Semantic search is unavailable" in payload["diagnostics"]
     assert payload["modeAfterProceedings"] == "metadata"
-    assert "Proceedings" in payload["proceedingsMessage"]
+    assert payload["proceedingsMessage"] == ""
     assert payload["cancelledButtonLabel"] == "Search"
     assert payload["cancelledButtonBusy"] == "false"
 
@@ -1976,7 +1975,7 @@ def test_library_view_bibtex_endpoints_use_canonical_metadata(tmp_path):
     assert main["paper_id"] == "action-paper"
     assert main["bibtex"].startswith("@article{")
     assert "author = {Jane Doe}" in main["bibtex"]
-    assert "abstract = {{Canonical abstract.}}" in main["bibtex"]
+    assert "abstract =" not in main["bibtex"]
     assert proceedings["paper_id"] == "proceeding-action-paper"
     assert proceedings["bibtex"].startswith("@inproceedings{")
     assert "booktitle = {Proceedings of Actions}" in proceedings["bibtex"]

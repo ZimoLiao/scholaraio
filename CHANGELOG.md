@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Library WebUI**: Adopted a monochrome layout with a compact header, consistent PDF controls, collapsible detail sections, and unobtrusive detail scrolling. Removed the dedicated DOI filter and redundant or empty metadata fields.
+- **BibTeX export**: Omitted abstracts from exported entries and WebUI Copy BibTeX; stored abstracts and RIS output are unchanged.
+
 ### Removed
 
 - **External webtools adapter (next major)**: Removed the `qt-web-extractor` MCP registration, `webextract` and `ingest-link` skills and CLI commands, setup/configuration surface, provider implementation, and the dormant GUILessBingSearch compatibility code. This is a breaking cleanup for the next major generation and must not ship in the 2.x line without the deprecation window required by the 2.x public contract. Live web discovery and URL reading now belong entirely to the active agent's native capabilities; selected content can still enter ScholarAIO through the normal document inbox and ingest pipeline.
