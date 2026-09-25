@@ -23,7 +23,7 @@ from scholaraio.stores.papers import (
     normalize_paper_type,
     read_meta,
 )
-from scholaraio.stores.proceedings import iter_proceedings_dirs, read_json
+from scholaraio.stores.proceedings import iter_proceedings_dirs
 
 if TYPE_CHECKING:
     from scholaraio.core.config import Config
@@ -297,7 +297,7 @@ def _proceedings_row(cfg: Config, row: dict, *, meta: dict | None = None, issues
     row_issues = list(issues or [])
     if meta is None:
         try:
-            meta = read_json(meta_path) if meta_path.exists() else {}
+            meta = read_meta(paper_dir) if meta_path.exists() else {}
         except (ValueError, OSError) as exc:
             meta = {"id": paper_id, "title": paper_id}
             row_issues.extend(_metadata_read_issues(paper_id, exc))
@@ -337,7 +337,7 @@ def _iter_proceedings_view_records(cfg: Config, *, only: Path | None = None):
 
         proceeding_issues: list[dict] = []
         try:
-            proceeding_meta = read_json(meta_path)
+            proceeding_meta = read_meta(proceeding_dir)
         except (ValueError, OSError) as exc:
             proceeding_meta = {"id": proceeding_dir.name, "title": proceeding_dir.name}
             proceeding_issues = _metadata_read_issues(proceeding_dir.name, exc)
@@ -356,12 +356,23 @@ def _iter_proceedings_view_records(cfg: Config, *, only: Path | None = None):
                 continue
             issues = list(proceeding_issues)
             try:
-                paper_meta = read_json(paper_meta_path)
+                paper_meta = read_meta(paper_dir)
             except (ValueError, OSError) as exc:
                 paper_meta = {"id": paper_dir.name, "title": paper_dir.name}
                 issues.extend(_metadata_read_issues(paper_dir.name, exc))
+            paper_id = paper_meta.get("id") or paper_dir.name
+            if not isinstance(paper_id, str):
+                issues.append(
+                    {
+                        "rule": "invalid_metadata_type",
+                        "severity": "warning",
+                        "field": "id",
+                        "message": "id must be text",
+                    }
+                )
+                paper_id = paper_dir.name
             row = {
-                "paper_id": paper_meta.get("id") or paper_dir.name,
+                "paper_id": paper_id,
                 "title": paper_meta.get("title") or "",
                 "authors": authors_text(paper_meta.get("authors") or []),
                 "year": str(paper_meta.get("year") or ""),

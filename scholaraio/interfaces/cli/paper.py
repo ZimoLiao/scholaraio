@@ -6,19 +6,15 @@ import logging
 import sys
 from pathlib import Path
 
-from scholaraio.core.log import ui as _default_ui
 from scholaraio.interfaces.cli.output import _format_citations as _default_format_citations
 
 _log = logging.getLogger(__name__)
 
 
 def _ui(message: str = "") -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        _default_ui(message)
-        return
-    cli_mod.ui(message)
+    from scholaraio.core import log
+
+    log.ui(message)
 
 
 def _lookup_registry_by_candidates(cfg, *candidates: object) -> dict | None:
@@ -89,12 +85,7 @@ def _print_header(l1: dict) -> None:
         _ui(f"Publication number   : {ids['patent_publication_number']}")
     if l1.get("paper_type"):
         _ui(f"Type     : {l1['paper_type']}")
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        format_citations = _default_format_citations
-    else:
-        format_citations = cli_mod._format_citations
+    format_citations = _default_format_citations
     cite_str = format_citations(l1.get("citation_count") or {})
     if cite_str:
         _ui(f"Citations     : {cite_str}")
@@ -108,12 +99,7 @@ def _enrich_show_header(l1: dict, *, paper_d: Path, requested_id: str, cfg) -> d
     enriched = dict(l1)
     enriched["dir_name"] = paper_d.name
     current_paper_id = str(enriched.get("paper_id") or "").strip()
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        lookup_registry = _lookup_registry_by_candidates
-    else:
-        lookup_registry = cli_mod._lookup_registry_by_candidates
+    lookup_registry = _lookup_registry_by_candidates
     reg = lookup_registry(
         cfg,
         requested_id if requested_id != paper_d.name else "",

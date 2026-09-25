@@ -45,7 +45,7 @@ def test_step_dedup_treats_stale_registry_as_new(tmp_path: Path):
         existing_dois={"10.1234/stale": existing_json},
         existing_pub_nums={},
         cfg=Config(_root=tmp_path),
-        opts={},
+        opts={"no_api": True},
         md_path=md,
         meta=meta,
     )

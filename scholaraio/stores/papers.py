@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import html
 import json
+import math
 import re
 import shutil
 import uuid
@@ -233,10 +234,10 @@ def best_citation(meta: dict) -> int:
     if not cc:
         return 0
     if isinstance(cc, (int, float)):
-        return int(cc)
+        return int(cc) if not isinstance(cc, float) or math.isfinite(cc) else 0
     if not isinstance(cc, dict):
         return 0
-    vals = [v for v in cc.values() if isinstance(v, (int, float))]
+    vals = [v for v in cc.values() if isinstance(v, (int, float)) and (not isinstance(v, float) or math.isfinite(v))]
     return int(max(vals)) if vals else 0
 
 
@@ -284,7 +285,10 @@ def read_meta(paper_d: Path) -> dict:
     """
     p = paper_d / "meta.json"
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
+        data = json.loads(p.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError(f"Metadata must be a JSON object: {p}")
+        return data
     except json.JSONDecodeError as e:
         raise ValueError(f"Malformed JSON in {p}: {e}") from e
 
@@ -306,6 +310,9 @@ def write_meta(paper_d: Path, data: dict) -> None:
 
 def _write_meta_unlocked(path: Path, data: dict) -> None:
     atomic_write_text(path, json.dumps(normalize_paper_metadata(data), indent=2, ensure_ascii=False) + "\n")
+    from scholaraio.stores.library_state import notify_metadata_write
+
+    notify_metadata_write(path)
 
 
 def modify_meta(paper_d: Path, edit: Callable[[dict], None]) -> dict:

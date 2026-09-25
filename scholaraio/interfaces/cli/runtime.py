@@ -5,8 +5,6 @@ from __future__ import annotations
 import os
 import sys
 
-from scholaraio.core.log import ui as _default_ui
-
 _UNICODE_OUTPUT_PROBE = "中文✓→"
 
 
@@ -47,12 +45,9 @@ def _configure_windows_stdio() -> None:
 
 
 def _ui(message: str = "") -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        _default_ui(message)
-        return
-    cli_mod.ui(message)
+    from scholaraio.core import log
+
+    log.ui(message)
 
 
 def main() -> None:

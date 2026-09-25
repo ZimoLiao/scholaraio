@@ -120,6 +120,7 @@ def _index_hash(meta: dict) -> str:
     """Compute a short hash of the fields indexed in FTS5."""
     parts = [
         meta.get("title") or "",
+        meta.get("first_author_lastname") or "",
         authors_text(meta.get("authors")),
         str(meta.get("year") or ""),
         meta.get("journal") or "",
@@ -129,12 +130,7 @@ def _index_hash(meta: dict) -> str:
         normalize_paper_type(meta.get("paper_type"), meta.get("journal"), meta.get("doi")),
         ((meta.get("ids") or {}).get("patent_publication_number", "") or ""),
     ]
-    cc = meta.get("citation_count")
-    if isinstance(cc, (int, float)):
-        parts.append(str(int(cc)))
-    elif cc and isinstance(cc, dict):
-        vals = [v for v in cc.values() if isinstance(v, (int, float))]
-        parts.append(str(max(vals)) if vals else "")
+    parts.append(str(best_citation(meta)))
     parts.append(json.dumps(meta.get("references", []), sort_keys=True))
     text = "\n".join(parts)
     return hashlib.md5(text.encode("utf-8")).hexdigest()[:12]
@@ -160,9 +156,15 @@ def build_index(papers_dir: Path, db_path: Path, rebuild: bool = False) -> int:
     from scholaraio.stores.papers import iter_paper_dirs
     from scholaraio.stores.papers import read_meta as _read_meta
 
+    if not papers_dir.is_dir():
+        raise FileNotFoundError(f"Library directory does not exist: {papers_dir}")
+    from scholaraio.stores.library_state import keyword_manifest_digest, library_manifest
+
+    source_digest = keyword_manifest_digest(library_manifest(papers_dir, force=True))
     conn = sqlite3.connect(db_path)
     try:
         conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("BEGIN IMMEDIATE")
         conn.execute(_SCHEMA)
         conn.execute(_HASH_SCHEMA)
         conn.execute(_REGISTRY_SCHEMA)
@@ -220,15 +222,30 @@ def build_index(papers_dir: Path, db_path: Path, rebuild: bool = False) -> int:
             for row in conn.execute("SELECT paper_id, content_hash FROM papers_hash").fetchall():
                 existing_hashes[row[0]] = row[1]
 
+        existing_paths = dict(conn.execute("SELECT id, dir_name FROM papers_registry"))
+        existing_md = dict(conn.execute("SELECT paper_id, md_path FROM papers"))
+        seen_ids: set[str] = set()
+        unreadable_dirs: set[str] = set()
         count = 0
         for pdir in iter_paper_dirs(papers_dir):
             try:
                 meta = _read_meta(pdir)
-            except (ValueError, FileNotFoundError):
+            except (ValueError, OSError):
+                unreadable_dirs.add(pdir.name)
                 continue
             paper_id = meta.get("id") or pdir.name
+            if paper_id in seen_ids:
+                raise ValueError(f"Duplicate paper ID: {paper_id}")
+            seen_ids.add(paper_id)
             h = _index_hash(meta)
-            if not rebuild and existing_hashes.get(paper_id) == h:
+            md_file = pdir / "paper.md"
+            md_path = str(md_file) if md_file.exists() else ""
+            if (
+                not rebuild
+                and existing_hashes.get(paper_id) == h
+                and existing_paths.get(paper_id) == pdir.name
+                and existing_md.get(paper_id) == md_path
+            ):
                 continue  # unchanged, skip
 
             if not rebuild:
@@ -325,16 +342,12 @@ def build_index(papers_dir: Path, db_path: Path, rebuild: bool = False) -> int:
                         ),
                     )
                 else:
-                    _idx_log.warning(
-                        "IntegrityError for paper %s: %s; skipping registry update",
-                        paper_id,
-                        exc,
-                    )
+                    raise
 
             # Insert references into citations table
             refs = _reference_dois(meta.get("references") or [])
+            conn.execute("DELETE FROM citations WHERE source_id = ?", (paper_id,))
             if refs:
-                conn.execute("DELETE FROM citations WHERE source_id = ?", (paper_id,))
                 conn.executemany(
                     "INSERT OR IGNORE INTO citations (source_id, target_doi, target_id) VALUES (?, ?, NULL)",
                     [(paper_id, doi) for doi in refs],
@@ -342,14 +355,27 @@ def build_index(papers_dir: Path, db_path: Path, rebuild: bool = False) -> int:
 
             count += 1
 
-        # Bulk resolve target_id for citations where target paper is in library
+        # A malformed record is not evidence of deletion. Preserve its last good
+        # index until it can be read again; remove only records absent from disk.
+        stale_ids = set(existing_paths) - seen_ids
+        stale_ids = {pid for pid in stale_ids if existing_paths[pid] not in unreadable_dirs}
+        for pid in stale_ids:
+            conn.execute("DELETE FROM papers WHERE paper_id = ?", (pid,))
+            conn.execute("DELETE FROM papers_hash WHERE paper_id = ?", (pid,))
+            conn.execute("DELETE FROM papers_registry WHERE id = ?", (pid,))
+            conn.execute("DELETE FROM citations WHERE source_id = ?", (pid,))
+
+        # Re-resolve every target: DOI edits and deletions can invalidate old links.
         conn.execute("""
             UPDATE citations SET target_id = (
                 SELECT pr.id FROM papers_registry pr
                 WHERE LOWER(pr.doi) = LOWER(citations.target_doi)
-            ) WHERE target_id IS NULL
+            )
         """)
 
+        conn.execute("CREATE TABLE IF NOT EXISTS index_source (root TEXT PRIMARY KEY, digest TEXT NOT NULL)")
+        conn.execute("DELETE FROM index_source")
+        conn.execute("INSERT INTO index_source VALUES (?, ?)", (str(papers_dir.resolve()), source_digest))
         conn.commit()
     finally:
         conn.close()
@@ -415,6 +441,7 @@ def build_proceedings_index(proceedings_root: Path, db_path: Path, rebuild: bool
     conn = sqlite3.connect(db_path)
     try:
         conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("BEGIN IMMEDIATE")
         conn.execute(_PROCEEDINGS_SCHEMA)
         if rebuild:
             conn.execute("DELETE FROM proceedings_fts")
@@ -546,6 +573,7 @@ def search(
     Raises:
         FileNotFoundError: 索引文件或 FTS5 表不存在。
     """
+    ensure_index_current(db_path, papers_dir=cfg.papers_dir if cfg is not None else None)
     if top_k is None:
         top_k = cfg.search.top_k if cfg is not None else 20
 
@@ -609,6 +637,7 @@ def search_author(
     Returns:
         匹配的论文字典列表。
     """
+    ensure_index_current(db_path, papers_dir=cfg.papers_dir if cfg is not None else None)
     if top_k is None:
         top_k = cfg.search.top_k if cfg is not None else 20
 
@@ -667,6 +696,7 @@ def top_cited(
     Raises:
         FileNotFoundError: 索引文件或 FTS5 表不存在。
     """
+    ensure_index_current(db_path)
     if not db_path.exists():
         raise FileNotFoundError(f"Index file does not exist: {db_path}\nRun `scholaraio index` first")
 
@@ -1021,6 +1051,7 @@ def get_references(
         参考文献列表，每项含 ``target_doi``、``target_id``，
         库内论文另含 ``title``、``dir_name``、``year``、``first_author``。
     """
+    ensure_index_current(db_path)
     if not db_path.exists():
         return []
     conn = sqlite3.connect(db_path)
@@ -1059,6 +1090,7 @@ def get_citing_papers(
     Returns:
         引用方论文列表，每项含 ``source_id``、``dir_name``、``title``、``year``。
     """
+    ensure_index_current(db_path)
     if not db_path.exists():
         return []
     conn = sqlite3.connect(db_path)
@@ -1111,6 +1143,7 @@ def get_shared_references(
         共同引用列表，每项含 ``target_doi``、``shared_count``、``target_id``，
         库内论文另含 ``title``、``dir_name``。
     """
+    ensure_index_current(db_path)
     if not db_path.exists() or not paper_id_list:
         return []
     conn = sqlite3.connect(db_path)
@@ -1136,3 +1169,24 @@ def get_shared_references(
     if paper_ids is not None:
         results = [r for r in results if r.get("target_id") is None or r["target_id"] in paper_ids]
     return results
+
+
+def ensure_index_current(db_path: Path, *, papers_dir: Path | None = None) -> None:
+    """Repair a known projection before querying; legacy indexes need one build.
+
+    Source scan results are shared for five seconds. A failed refresh propagates
+    instead of pretending the old projection is current. Semantic indexes remain
+    explicitly managed by the embedding command.
+    """
+    from scholaraio.stores.library_state import keyword_manifest_digest, library_manifest
+
+    if not db_path.exists():
+        return
+    with sqlite3.connect(db_path) as conn:
+        if not conn.execute("SELECT 1 FROM sqlite_master WHERE name='index_source'").fetchone():
+            return
+        source = conn.execute("SELECT root, digest FROM index_source").fetchone()
+    if source:
+        root = papers_dir.resolve() if papers_dir is not None else Path(source[0])
+        if str(root) != source[0] or keyword_manifest_digest(library_manifest(root)) != source[1]:
+            build_index(root, db_path)

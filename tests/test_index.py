@@ -291,3 +291,144 @@ class TestLookupPaper:
     def test_lookup_nonexistent_returns_none(self, tmp_papers, tmp_db):
         build_index(tmp_papers, tmp_db)
         assert lookup_paper(tmp_db, "nonexistent-id") is None
+
+
+class TestIncrementalMutationContract:
+    def test_external_rename_delete_and_reference_clear(self, tmp_path):
+        import shutil
+
+        root = tmp_path / "papers"
+        root.mkdir()
+        db = tmp_path / "index.db"
+        for name, meta in {
+            "source": {"id": "source", "title": "Source", "references": ["10.1234/target"]},
+            "target": {"id": "target", "title": "Target", "doi": "10.1234/target"},
+        }.items():
+            (root / name).mkdir()
+            (root / name / "meta.json").write_text(json.dumps(meta))
+        build_index(root, db)
+        (root / "source").rename(root / "renamed")
+        build_index(root, db)
+        assert lookup_paper(db, "source")["dir_name"] == "renamed"
+        shutil.rmtree(root / "target")
+        build_index(root, db)
+        assert lookup_paper(db, "target") is None
+        with sqlite3.connect(db) as conn:
+            assert conn.execute("SELECT target_id FROM citations").fetchone() == (None,)
+        (root / "renamed" / "meta.json").write_text(json.dumps({"id": "source", "title": "Source"}))
+        build_index(root, db)
+        with sqlite3.connect(db) as conn:
+            assert conn.execute("SELECT COUNT(*) FROM citations").fetchone()[0] == 0
+
+    def test_unreadable_record_preserves_last_good_index(self, tmp_path):
+        root = tmp_path / "papers"
+        paper = root / "record"
+        paper.mkdir(parents=True)
+        db = tmp_path / "index.db"
+        (paper / "meta.json").write_text(json.dumps({"id": "p", "title": "Evidence"}))
+        build_index(root, db)
+        (paper / "meta.json").write_text("{broken")
+        build_index(root, db)
+        assert lookup_paper(db, "p")["title"] == "Evidence"
+
+
+def test_failed_rebuild_preserves_previous_projection(tmp_path):
+    import pytest
+
+    root = tmp_path / "papers"
+    (root / "one").mkdir(parents=True)
+    db = tmp_path / "index.db"
+    meta = json.dumps({"id": "one", "title": "Original"})
+    (root / "one" / "meta.json").write_text(meta)
+    build_index(root, db)
+    (root / "duplicate").mkdir()
+    (root / "duplicate" / "meta.json").write_text(meta)
+    with pytest.raises(ValueError, match="Duplicate paper ID"):
+        build_index(root, db, rebuild=True)
+    with sqlite3.connect(db) as conn:
+        assert conn.execute("SELECT title FROM papers").fetchall() == [("Original",)]
+        assert conn.execute("SELECT id FROM papers_registry").fetchall() == [("one",)]
+
+
+def test_application_write_refreshes_keyword_search_without_manual_index(tmp_path):
+    from scholaraio.stores.papers import update_meta
+
+    root = tmp_path / "papers"
+    (root / "one").mkdir(parents=True)
+    db = tmp_path / "index.db"
+    (root / "one" / "meta.json").write_text(json.dumps({"id": "one", "title": "Original"}))
+    build_index(root, db)
+    update_meta(root / "one", title="Replacement")
+    assert search("Replacement", db)[0]["paper_id"] == "one"
+    assert search("Original", db) == []
+
+
+def test_duplicate_doi_rebuild_rolls_back_every_projection(tmp_path):
+    import pytest
+
+    root = tmp_path / "papers"
+    for name in ("a", "b"):
+        directory = root / name
+        directory.mkdir(parents=True)
+        (directory / "meta.json").write_text(json.dumps({"id": name, "title": name, "doi": f"10.1234/{name}"}))
+    db = tmp_path / "index.db"
+    build_index(root, db)
+    with sqlite3.connect(db) as conn:
+        before = {
+            table: conn.execute(f"SELECT * FROM {table}").fetchall()
+            for table in ("papers", "papers_registry", "papers_hash", "index_source")
+        }
+    (root / "a" / "meta.json").write_text(json.dumps({"id": "a", "title": "Changed", "doi": "10.1234/b"}))
+    with pytest.raises(sqlite3.IntegrityError):
+        build_index(root, db)
+    with sqlite3.connect(db) as conn:
+        for table, rows in before.items():
+            assert conn.execute(f"SELECT * FROM {table}").fetchall() == rows
+
+
+def test_pdf_and_markdown_saves_do_not_rebuild_metadata_index(tmp_path, monkeypatch):
+    from scholaraio.services import index
+    from scholaraio.stores.library_state import library_manifest
+
+    directory = tmp_path / "papers" / "one"
+    directory.mkdir(parents=True)
+    (directory / "meta.json").write_text(json.dumps({"id": "one", "title": "Evidence"}))
+    pdf, markdown = directory / "paper.pdf", directory / "paper.md"
+    pdf.write_bytes(b"pdf before")
+    markdown.write_text("before")
+    db = tmp_path / "index.db"
+    build_index(directory.parent, db)
+    builds = []
+    original = index.build_index
+
+    def rebuild(*args, **kwargs):
+        builds.append(True)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(index, "build_index", rebuild)
+    pdf.write_bytes(b"annotation save")
+    markdown.write_text("rewritten full text")
+    library_manifest(directory.parent, force=True)
+    assert search("Evidence", db)
+    assert builds == []
+    markdown.unlink()
+    library_manifest(directory.parent, force=True)
+    assert search("Evidence", db)
+    assert builds == [True]
+    with sqlite3.connect(db) as conn:
+        assert conn.execute("SELECT md_path FROM papers").fetchone() == ("",)
+
+
+def test_keyword_refresh_tolerates_nonfinite_citation_counts(tmp_path):
+    from scholaraio.stores.papers import update_meta
+
+    directory = tmp_path / "papers" / "one"
+    directory.mkdir(parents=True)
+    (directory / "meta.json").write_text(json.dumps({"id": "one", "title": "Evidence"}))
+    db = tmp_path / "index.db"
+    build_index(directory.parent, db)
+    for value in (float("inf"), float("nan"), {"bad": float("inf"), "good": 12}):
+        update_meta(directory, citation_count=value)
+        assert search("Evidence", db)[0]["paper_id"] == "one"
+    with sqlite3.connect(db) as conn:
+        assert conn.execute("SELECT citation_count FROM papers").fetchone() == ("12",)

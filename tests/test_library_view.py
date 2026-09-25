@@ -570,14 +570,14 @@ def test_proceedings_view_isolates_unreadable_volume_metadata(tmp_path: Path, mo
     _write_proceedings_child(proceedings_root)
     proceeding_meta_path = proceedings_root / "Proc-2026-Test" / "meta.json"
     cfg = _build_config({}, tmp_path)
-    original_read_json = library_view.read_json
+    original_read_meta = library_view.read_meta
 
-    def read_json_with_lock(path: Path) -> dict:
-        if path == proceeding_meta_path:
+    def read_meta_with_lock(path: Path) -> dict:
+        if path / "meta.json" == proceeding_meta_path:
             raise PermissionError("metadata is locked")
-        return original_read_json(path)
+        return original_read_meta(path)
 
-    monkeypatch.setattr(library_view, "read_json", read_json_with_lock)
+    monkeypatch.setattr(library_view, "read_meta", read_meta_with_lock)
 
     view = library_view.build_proceedings_library_view(cfg)
 
@@ -594,14 +594,14 @@ def test_proceedings_view_isolates_unreadable_child_metadata(tmp_path: Path, mon
     _write_proceedings_child(proceedings_root)
     child_meta_path = proceedings_root / "Proc-2026-Test" / "papers" / "Wave-2026-Test" / "meta.json"
     cfg = _build_config({}, tmp_path)
-    original_read_json = library_view.read_json
+    original_read_meta = library_view.read_meta
 
-    def read_json_with_lock(path: Path) -> dict:
-        if path == child_meta_path:
+    def read_meta_with_lock(path: Path) -> dict:
+        if path / "meta.json" == child_meta_path:
             raise PermissionError("metadata is locked")
-        return original_read_json(path)
+        return original_read_meta(path)
 
-    monkeypatch.setattr(library_view, "read_json", read_json_with_lock)
+    monkeypatch.setattr(library_view, "read_meta", read_meta_with_lock)
 
     view = library_view.build_proceedings_library_view(cfg)
 

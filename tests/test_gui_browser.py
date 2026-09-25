@@ -76,3 +76,129 @@ def test_real_browser_preserves_dragged_selection_and_resumes_updates(tmp_path):
         server.shutdown()
         server.server_close()
         worker.join(timeout=5)
+
+
+@pytest.mark.browser
+@pytest.mark.skipif(os.environ.get("SCHOLARAIO_BROWSER_TESTS") != "1", reason="opt-in Chromium integration")
+def test_real_browser_pages_and_filters_across_the_library(tmp_path):
+    from playwright.sync_api import expect, sync_playwright
+
+    cfg = _build_config({}, tmp_path)
+    for i in range(205):
+        paper = cfg.papers_dir / str(i)
+        paper.mkdir(parents=True)
+        write_meta(
+            paper,
+            {
+                "id": str(i),
+                "title": f"Paper {i:03}",
+                "authors": ["Jane Doe"],
+                "year": 2026,
+                "paper_type": "journal-article",
+            },
+        )
+    proceeding = cfg.proceedings_dir / "volume"
+    child = proceeding / "papers" / "child"
+    child.mkdir(parents=True)
+    write_meta(proceeding, {"id": "volume", "title": "Test Proceedings"})
+    write_meta(child, {"id": "child", "title": "Proceedings test paper", "year": 2026})
+    with patch(
+        "scholaraio.services.system_open.default_application_open_capability",
+        return_value=DefaultApplicationOpenCapability(False, None, "browser test"),
+    ):
+        server = create_library_view_server(cfg, port=0)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            page = browser.new_page()
+            errors = []
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            page.goto(f"http://127.0.0.1:{server.server_port}")
+            expect(page.locator("#table-count")).to_have_text("1–100 / 205")
+            expect(page.locator("#paper-table-body tr")).to_have_count(100)
+            # A new type outside the current page must still update global facets.
+            added = cfg.papers_dir / "book"
+            added.mkdir()
+            write_meta(added, {"id": "book", "title": "New book", "year": 2000, "paper_type": "book"})
+            page.locator("#refresh-button").click()
+            expect(page.locator("#table-count")).to_have_text("1–100 / 206")
+            expect(page.locator('#type-filter option[value="book"]')).to_have_count(1)
+            page.locator("#type-filter").select_option("journal-article")
+            expect(page.locator("#table-count")).to_have_text("1–100 / 205")
+            page.locator("#refresh-button").click()
+            expect(page.locator("#type-filter")).to_have_value("journal-article")
+            page.locator("#page-next").click()
+            expect(page.locator("#table-count")).to_have_text("101–200 / 205")
+            page.locator("#title-filter").fill("Paper 204")
+            expect(page.locator("#table-count")).to_have_text("1–1 / 1")
+            expect(page.locator("#detail-title")).to_have_text("Paper 204")
+            page.locator("#clear-filters-button").click()
+            page.locator("#tab-proceedings").click()
+            expect(page.locator("#table-count")).to_have_text("1–1 / 1")
+            expect(page.locator("#detail-title")).to_have_text("Proceedings test paper")
+            assert errors == []
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)
+
+
+@pytest.mark.browser
+@pytest.mark.skipif(os.environ.get("SCHOLARAIO_BROWSER_TESTS") != "1", reason="opt-in Chromium integration")
+def test_real_browser_resolves_inspected_pdf_versions(tmp_path):
+    from types import SimpleNamespace
+
+    from playwright.sync_api import expect, sync_playwright
+
+    from tests.test_pdf_conflicts import conflict
+
+    store, paths, reconciler, record = conflict(tmp_path)
+    cfg = _build_config({"paths": {"papers_dir": str(tmp_path / "library")}}, tmp_path)
+    write_meta(record.canonical_path.parent, {"id": "paper-id", "title": "Conflicting annotations", "year": 2026})
+    with patch(
+        "scholaraio.services.system_open.default_application_open_capability",
+        return_value=DefaultApplicationOpenCapability(True, "host", "browser test"),
+    ):
+        server = create_library_view_server(cfg, port=0)
+    server.RequestHandlerClass.pdf_edit_mirror_service = SimpleNamespace(
+        store=store,
+        paths=paths,
+        reconciler=reconciler,
+        status=lambda source, paper_id: store.public_status(store.get_by_paper(source, paper_id)),
+    )
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            page = browser.new_page()
+            errors = []
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            page.goto(f"http://127.0.0.1:{server.server_port}")
+            page.locator("#pdf-recovery-button").click()
+            expect(page.locator("#pdf-recovery-panel")).to_be_visible()
+            page.locator("#tab-proceedings").click()
+            expect(page.locator("#pdf-recovery-panel")).to_be_hidden()
+            expect(page.locator("#table-count")).to_have_text("0–0 / 0")
+            with page.expect_response(lambda response: "/api/proceedings/papers" in response.url, timeout=5000):
+                page.wait_for_timeout(2600)
+            page.locator("#tab-main").click()
+            page.locator("#pdf-recovery-button").click()
+            expect(page.locator("#pdf-recovery-panel")).to_be_visible()
+            mirror = page.locator("#pdf-recovery-versions > div").filter(has_text="Windows viewer copy:")
+            mirror.get_by_role("button").click()
+            expect(page.locator("#pdf-recovery-message")).to_contain_text("Close all PDF readers")
+            page.locator("#pdf-readers-closed").check()
+            mirror.get_by_role("button").click()
+            expect(page.locator("#pdf-recovery-panel")).to_be_hidden()
+            assert record.canonical_path.read_bytes() == record.mirror_path.read_bytes()
+            assert store.get(record.sync_id).state == "in_sync"
+            assert errors == []
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)

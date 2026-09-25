@@ -7,31 +7,21 @@ import logging
 import sys
 from pathlib import Path
 
+import scholaraio.interfaces.cli.paths as _dep_paths
+
 
 def _ui(msg: str = "") -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        from scholaraio.core.log import ui as log_ui
+    from scholaraio.core import log
 
-        log_ui(msg)
-        return
-    cli_mod.ui(msg)
+    log.ui(msg)
 
 
 def _log_error(msg: str, *args) -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        logging.getLogger(__name__).error(msg, *args)
-        return
-    cli_mod._log.error(msg, *args)
+    logging.getLogger(__name__).error(msg, *args)
 
 
 def _resolve_ws_paper_ids(args: argparse.Namespace, cfg) -> set[str] | None:
-    from scholaraio.interfaces.cli import compat as cli_mod
-
-    return cli_mod._resolve_ws_paper_ids(args, cfg)
+    return _dep_paths._resolve_ws_paper_ids(args, cfg)
 
 
 def cmd_citation_check(args: argparse.Namespace, cfg) -> None:

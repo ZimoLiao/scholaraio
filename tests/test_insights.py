@@ -7,6 +7,7 @@ from argparse import Namespace
 from pathlib import Path
 from types import SimpleNamespace
 
+import scholaraio.core.log as target_log
 from scholaraio.interfaces.cli import compat as cli
 from scholaraio.services import insights, metrics
 
@@ -121,7 +122,7 @@ def test_cmd_insights_smoke_with_metrics_store(tmp_path: Path, monkeypatch):
     store.record("read", "Paper-A", detail={"title": "Heat Transfer in Turbulent Flow"})
 
     messages: list[str] = []
-    monkeypatch.setattr(cli, "ui", lambda msg="": messages.append(msg))
+    monkeypatch.setattr(target_log, "ui", lambda msg="": messages.append(msg))
     monkeypatch.setattr(
         "scholaraio.services.vectors.vsearch",
         lambda query, db_path, top_k, cfg: [
@@ -170,7 +171,7 @@ def test_cmd_insights_uses_configured_workspace_dir(tmp_path: Path, monkeypatch)
     store.record("read", "Paper-A", detail={"title": "Heat Transfer in Turbulent Flow"})
 
     messages: list[str] = []
-    monkeypatch.setattr(cli, "ui", lambda msg="": messages.append(msg))
+    monkeypatch.setattr(target_log, "ui", lambda msg="": messages.append(msg))
     monkeypatch.setattr("scholaraio.services.vectors.vsearch", lambda query, db_path, top_k, cfg: [])
 
     cfg = SimpleNamespace(
@@ -208,7 +209,7 @@ def test_cmd_insights_supports_future_workspace_refs_layout(tmp_path: Path, monk
     store.record("read", "Paper-A", detail={"title": "Heat Transfer in Turbulent Flow"})
 
     messages: list[str] = []
-    monkeypatch.setattr(cli, "ui", lambda msg="": messages.append(msg))
+    monkeypatch.setattr(target_log, "ui", lambda msg="": messages.append(msg))
     monkeypatch.setattr("scholaraio.services.vectors.vsearch", lambda query, db_path, top_k, cfg: [])
 
     cfg = SimpleNamespace(

@@ -17,6 +17,7 @@ must stay true, not just what one implementation plan happened to do.
 | `migration-mechanism-spec.md` | Migration control-plane contract, journal, locking, and cleanup gates |
 | `directory-migration-sequence.md` | Historical compatibility-window execution order |
 | `user-data-migration-strategy.md` | Historical user-data migration strategy and posture |
+| `library-projections.md` | Metadata authority, index repair, paging and performance budgets |
 | `wsl-pdf-edit-mirror.md` | Stable Windows PDF edit mirrors, automatic reconciliation, and recovery contract |
 
 ## Rules

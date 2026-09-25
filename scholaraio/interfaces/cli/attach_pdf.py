@@ -7,22 +7,17 @@ import shutil
 import sys
 from pathlib import Path
 
+import scholaraio.interfaces.cli.paper as _dep_paper
+
 
 def _ui(msg: str = "") -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        from scholaraio.core.log import ui as log_ui
+    from scholaraio.core import log
 
-        log_ui(msg)
-        return
-    cli_mod.ui(msg)
+    log.ui(msg)
 
 
 def _resolve_paper(paper_id: str, cfg) -> Path:
-    from scholaraio.interfaces.cli import compat as cli_mod
-
-    return cli_mod._resolve_paper(paper_id, cfg)
+    return _dep_paper._resolve_paper(paper_id, cfg)
 
 
 def _batch_convert_pdfs(cfg, *, enrich: bool = False) -> None:

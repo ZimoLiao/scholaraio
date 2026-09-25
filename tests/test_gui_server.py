@@ -215,6 +215,7 @@ document = {
   execCommand(command) { return command === "copy" && this.__execCopy; },
 };
 const context = {
+  URLSearchParams,
   document,
   elements,
   navigator: { clipboard: { writeText: async () => {} } },
@@ -390,7 +391,7 @@ def test_library_view_shell_omits_audit_chrome_and_keeps_pdf_actions_single_line
 
     css = (_static_dir() / "workflows.css").read_text(encoding="utf-8")
     detail_actions = css.split(".detail-actions {", 1)[1].split("}", 1)[0]
-    action_button = css.rsplit(".action-button {", 1)[1].split("}", 1)[0]
+    action_button = css.rsplit("\n.action-button {", 1)[1].split("}", 1)[0]
     assert "grid-template-columns:" in detail_actions
     assert "minmax(" in detail_actions
     assert "white-space: nowrap" in action_button
@@ -1268,6 +1269,7 @@ const document = {{
   addEventListener() {{}},
 }};
 const context = {{
+  URLSearchParams,
   document,
   navigator: {{ clipboard: {{ writeText: async (value) => {{ context.__copied = value; }} }} }},
   fetch: async () => ({{ ok: true, json: async () => ({{ papers: [], total: 0 }}) }}),
@@ -1382,6 +1384,7 @@ const document = {{
 }};
 const pending = [];
 const context = {{
+  URLSearchParams,
   document,
   pending,
   navigator: {{ clipboard: {{ writeText: async () => {{}} }} }},
@@ -1522,6 +1525,7 @@ const document = {{
   addEventListener() {{}},
 }};
 const context = {{
+  URLSearchParams,
   document,
   navigator: {{ clipboard: {{ writeText: async () => {{}} }} }},
   fetch: async () => ({{ ok: false, status: 500, statusText: "Boom" }}),
@@ -1597,6 +1601,7 @@ const document = {{
   addEventListener() {{}},
 }};
 const context = {{
+  URLSearchParams,
   document,
   navigator: {{ clipboard: {{ writeText: async () => {{}} }} }},
   fetch: async () => ({{ ok: true, json: async () => ({{ papers: [], total: 0, issue_totals: {{}} }}) }}),
@@ -1664,6 +1669,7 @@ const document = {{
   addEventListener() {{}},
 }};
 const context = {{
+  URLSearchParams,
   document,
   __abstract: {abstract},
   __conclusion: {conclusion},
@@ -1746,6 +1752,7 @@ const document = {{
   addEventListener() {{}},
 }};
 const context = {{
+  URLSearchParams,
   document,
   __abstract: {abstract},
   navigator: {{ clipboard: {{ writeText: async () => {{}} }} }},
@@ -1838,6 +1845,7 @@ const document = {{
   addEventListener() {{}},
 }};
 const context = {{
+  URLSearchParams,
   document,
   fetch: async () => ({{ ok: true, json: async () => ({{ papers: [], total: 0 }}) }}),
   setInterval: () => 1,
@@ -2851,3 +2859,176 @@ return { href: document.__clickedHref, message: els.toast.textContent, busy: sta
     assert result["href"] == ""
     assert "Check the default viewer" in result["message"]
     assert result["busy"] is False
+
+
+def test_paged_library_rejects_bad_queries_and_uses_stable_revision(tmp_path):
+    cfg, _main, _child = _write_gui_action_fixtures(tmp_path)
+    with _running_library_server(cfg) as (_server, base):
+        page, headers = _json_response(base + "/api/main/papers?limit=1")
+        assert page["total"] == 1 and page["matched"] == 1
+        assert len(page["papers"]) == 1
+        assert page["revision"]
+        assert headers["ETag"]
+        for query in ("limit=1000", "limit=1&sort=unsafe", "limit=1&ids=%7B%7D"):
+            with pytest.raises(HTTPError) as error:
+                urlopen(base + "/api/main/papers?" + query)
+            assert error.value.code == 400
+
+
+def test_pdf_recovery_requires_csrf_and_matching_versions(tmp_path):
+    from tests.test_pdf_conflicts import conflict
+
+    cfg = _build_config({"paths": {"papers_dir": str(tmp_path / "library")}}, tmp_path)
+    store, paths, reconciler, record = conflict(tmp_path)
+    (record.canonical_path.parent / "meta.json").write_text(json.dumps({"id": record.paper_id, "title": "Paper"}))
+    service = SimpleNamespace(store=store, paths=paths, reconciler=reconciler)
+    with _running_library_server(cfg) as (server, base):
+        server.RequestHandlerClass.pdf_edit_mirror_service = service
+        snapshot, _headers = _json_response(base + "/api/main/pdf-recovery?id=paper-id")
+        body = {"id": "paper-id", "token": snapshot["token"], "version": "mirror", "readers_closed": True}
+        with pytest.raises(HTTPError) as error:
+            urlopen(_post_json(base + "/api/main/resolve-pdf", body, origin=base))
+        assert error.value.code == 403
+        token = server.RequestHandlerClass.csrf_token
+        body["token"] = "stale"
+        with pytest.raises(HTTPError) as error:
+            urlopen(_post_json(base + "/api/main/resolve-pdf", body, origin=base, token=token))
+        assert error.value.code == 409
+        body["token"] = snapshot["token"]
+        with urlopen(_post_json(base + "/api/main/resolve-pdf", body, origin=base, token=token)) as response:
+            assert json.load(response)["status"]["state"] == "in_sync"
+        assert record.canonical_path.read_bytes() == record.mirror_path.read_bytes()
+
+
+def test_pdf_recovery_downloads_damaged_snapshot_without_preview(tmp_path):
+    from urllib.parse import urlencode
+
+    from tests.test_pdf_conflicts import conflict
+
+    cfg = _build_config({"paths": {"papers_dir": str(tmp_path / "library")}}, tmp_path)
+    store, paths, reconciler, record = conflict(tmp_path)
+    (record.canonical_path.parent / "meta.json").write_text(json.dumps({"id": record.paper_id, "title": "Paper"}))
+    damaged = b"partial viewer save"
+    record.canonical_path.write_bytes(damaged)
+    with _running_library_server(cfg) as (server, base):
+        server.RequestHandlerClass.pdf_edit_mirror_service = SimpleNamespace(
+            store=store, paths=paths, reconciler=reconciler
+        )
+        snapshot, _ = _json_response(base + "/api/main/pdf-recovery?id=paper-id")
+        query = urlencode({"id": record.paper_id, "version": "canonical", "token": snapshot["token"]})
+        endpoint = base + "/api/main/pdf-recovery?" + query
+        with urlopen(endpoint + "&download=1") as response:
+            assert response.read() == damaged
+            assert "attachment" in response.headers["Content-Disposition"]
+        with pytest.raises(HTTPError) as error:
+            urlopen(endpoint)
+        assert error.value.code == 400
+        record.canonical_path.write_bytes(b"new save")
+        with pytest.raises(HTTPError) as error:
+            urlopen(endpoint + "&download=1")
+        assert error.value.code == 409
+
+
+def test_paged_proceedings_supports_conditional_response(tmp_path):
+    cfg, _main, _child = _write_gui_action_fixtures(tmp_path)
+    with _running_library_server(cfg) as (_server, base):
+        url = base + "/api/proceedings/papers?limit=100"
+        page, headers = _json_response(url)
+        assert page["total"] == page["matched"] == 1
+        assert len(page["papers"]) == 1
+        with pytest.raises(HTTPError) as error:
+            urlopen(Request(url, headers={"If-None-Match": headers["ETag"]}))
+        assert error.value.code == 304
+
+
+def test_recovery_inspection_cannot_reopen_after_switching_tabs():
+    result = _run_library_app_vm(
+        """
+state.tab = "main";
+state.selected.main = "paper";
+document.getElementById("pdf-recovery-panel").hidden = true;
+refreshActive = async () => {};
+let complete;
+fetch = () => new Promise(resolve => { complete = resolve; });
+const pending = inspectPdfRecovery();
+switchTab("proceedings");
+switchTab("main");
+complete({ ok: true, status: 200, json: async () => ({ token: "old", versions: [] }) });
+await pending;
+return { recovery: state.recovery, hidden: document.getElementById("pdf-recovery-panel").hidden };
+"""
+    )
+    assert result == {"recovery": None, "hidden": True}
+
+
+def test_recovered_scan_clears_its_error_without_erasing_search_diagnostics():
+    result = _run_library_app_vm(
+        """
+state.tab = "main";
+setSearchDiagnostics("degraded", "Semantic index needs updating");
+state.payload.main = { refresh_error: "Library refresh failed" };
+renderMetrics();
+const error = document.getElementById("library-refresh-error");
+const before = { message: error.textContent, hidden: error.hidden };
+state.payload.main = { refresh_error: "" };
+renderMetrics();
+return { before, cleared: error.hidden && error.textContent === "", search: els.searchDiagnostics.textContent };
+"""
+    )
+    assert result == {
+        "before": {"message": "Library refresh failed", "hidden": False},
+        "cleared": True,
+        "search": "Semantic index needs updating",
+    }
+
+
+def test_editing_filters_reenables_search_while_old_request_is_pending():
+    result = _run_library_app_vm(
+        """
+state.searchMode = "semantic";
+els.searchMode.value = "semantic";
+els.searchInput.value = "query";
+let complete;
+fetch = () => new Promise(resolve => { complete = resolve; });
+const pending = runRankedSearch();
+const wasBusy = state.searchBusy;
+els.titleFilter.value = "changed";
+syncFiltersFromControls();
+markRankedSearchDirty();
+const enabledBeforeCompletion = !state.searchBusy && !els.searchButton.disabled;
+complete({ ok: true, status: 200, json: async () => ({ results: [], diagnostics: { message: "stale" } }) });
+await pending;
+return { wasBusy, enabledBeforeCompletion, enabledAfter: !state.searchBusy && !els.searchButton.disabled, label: els.searchButton.textContent, message: els.searchDiagnostics.textContent };
+"""
+    )
+    assert result["wasBusy"] is True
+    assert result["enabledBeforeCompletion"] is True
+    assert result["enabledAfter"] is True
+    assert result["label"] == "Search"
+    assert "Filters changed" in result["message"]
+
+
+def test_invalid_year_input_rejects_pending_search_and_preserves_validation():
+    result = _run_library_app_vm(
+        """
+state.searchMode = "semantic";
+els.searchMode.value = "semantic";
+els.searchInput.value = "query";
+let complete;
+fetch = () => new Promise(resolve => { complete = resolve; });
+const pending = runRankedSearch();
+els.yearFromFilter.value = "20";
+els.yearFromFilter.dispatch("input");
+const enabledBeforeCompletion = !state.searchBusy && !els.searchButton.disabled;
+complete({ ok: true, status: 200, json: async () => ({ results: [{paper_id: "old"}], diagnostics: { message: "old response" } }) });
+await pending;
+let refreshRequests = 0;
+fetch = async () => { refreshRequests += 1; throw new Error("Invalid years must not be sent"); };
+await refreshActive({ background: true });
+return { enabledBeforeCompletion, ranked: state.ranked, message: els.searchDiagnostics.textContent, refreshRequests };
+"""
+    )
+    assert result["enabledBeforeCompletion"] is True
+    assert result["ranked"] is None
+    assert result["message"] == "Year from must be a four-digit year."
+    assert result["refreshRequests"] == 0

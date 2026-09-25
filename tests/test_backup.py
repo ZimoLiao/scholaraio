@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import sqlite3
 import subprocess
@@ -12,6 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import scholaraio.core.log as target_log
 from scholaraio.core.config import _build_config
 from scholaraio.interfaces.cli import compat as cli
 
@@ -611,7 +613,7 @@ def test_instance_backup_and_manifest_scoped_restore_round_trip(tmp_path: Path):
 def test_cmd_backup_list_displays_configured_targets(tmp_path: Path, monkeypatch):
     cfg = _build_backup_cfg(tmp_path)
     messages: list[str] = []
-    monkeypatch.setattr(cli, "ui", lambda msg="": messages.append(msg))
+    monkeypatch.setattr(target_log, "ui", lambda msg="": messages.append(msg))
 
     cli.cmd_backup(Namespace(backup_action="list"), cfg)
 
@@ -623,7 +625,7 @@ def test_cmd_backup_list_displays_configured_targets(tmp_path: Path, monkeypatch
 
 def test_cmd_backup_restore_reports_dry_run_completion(tmp_path: Path, monkeypatch):
     messages: list[str] = []
-    monkeypatch.setattr(cli, "ui", lambda msg="": messages.append(msg))
+    monkeypatch.setattr(target_log, "ui", lambda msg="": messages.append(msg))
     monkeypatch.setattr(
         "scholaraio.services.backup.fetch_backup_manifest",
         lambda *_args, **_kwargs: _instance_manifest(),
@@ -654,7 +656,7 @@ def test_cmd_backup_restore_reports_dry_run_completion(tmp_path: Path, monkeypat
 
 def test_cmd_backup_run_reports_dry_run_completion(tmp_path: Path, monkeypatch):
     messages: list[str] = []
-    monkeypatch.setattr(cli, "ui", lambda msg="": messages.append(msg))
+    monkeypatch.setattr(target_log, "ui", lambda msg="": messages.append(msg))
 
     def fake_run_backup(*_args, on_command=None, **_kwargs):
         on_command(["rsync", "-a", "/src/", "alice@host:/dst/"])
@@ -673,7 +675,7 @@ def test_cmd_backup_run_reports_dry_run_completion(tmp_path: Path, monkeypatch):
 
 def test_cmd_backup_run_displays_shell_quoted_preview(tmp_path: Path, monkeypatch):
     messages: list[str] = []
-    monkeypatch.setattr(cli, "ui", lambda msg="": messages.append(msg))
+    monkeypatch.setattr(target_log, "ui", lambda msg="": messages.append(msg))
 
     def fake_run_backup(*_args, on_command=None, **_kwargs):
         on_command(
@@ -704,8 +706,12 @@ def test_cmd_backup_run_exits_cleanly_when_backup_runtime_error_occurs(tmp_path:
 
     messages: list[str] = []
     errors: list[str] = []
-    monkeypatch.setattr(cli, "ui", lambda msg="": messages.append(msg))
-    monkeypatch.setattr(cli._log, "error", lambda msg, *args: errors.append(msg % args if args else msg))
+    monkeypatch.setattr(target_log, "ui", lambda msg="": messages.append(msg))
+    monkeypatch.setattr(
+        logging.getLogger("scholaraio.interfaces.cli.backup"),
+        "error",
+        lambda msg, *args: errors.append(msg % args if args else msg),
+    )
 
     def fake_run_backup(*_args, on_command=None, **_kwargs):
         on_command(["missing-rsync", "-a", "/src/", "alice@host:/dst/"])
@@ -726,8 +732,12 @@ def test_cmd_backup_run_exits_cleanly_when_backup_runtime_error_occurs(tmp_path:
 def test_cmd_backup_run_shows_guidance_for_noninteractive_auth_failures(tmp_path: Path, monkeypatch):
     messages: list[str] = []
     errors: list[str] = []
-    monkeypatch.setattr(cli, "ui", lambda msg="": messages.append(msg))
-    monkeypatch.setattr(cli._log, "error", lambda msg, *args: errors.append(msg % args if args else msg))
+    monkeypatch.setattr(target_log, "ui", lambda msg="": messages.append(msg))
+    monkeypatch.setattr(
+        logging.getLogger("scholaraio.interfaces.cli.backup"),
+        "error",
+        lambda msg, *args: errors.append(msg % args if args else msg),
+    )
     monkeypatch.setattr(
         "scholaraio.services.backup.build_rsync_command",
         lambda *_args, **_kwargs: ["rsync", "-a", "/src/", "alice@host:/dst/"],
@@ -754,8 +764,12 @@ def test_cmd_backup_run_shows_guidance_for_noninteractive_auth_failures(tmp_path
 def test_cmd_backup_run_shows_guidance_for_host_key_failures(tmp_path: Path, monkeypatch):
     messages: list[str] = []
     errors: list[str] = []
-    monkeypatch.setattr(cli, "ui", lambda msg="": messages.append(msg))
-    monkeypatch.setattr(cli._log, "error", lambda msg, *args: errors.append(msg % args if args else msg))
+    monkeypatch.setattr(target_log, "ui", lambda msg="": messages.append(msg))
+    monkeypatch.setattr(
+        logging.getLogger("scholaraio.interfaces.cli.backup"),
+        "error",
+        lambda msg, *args: errors.append(msg % args if args else msg),
+    )
     monkeypatch.setattr(
         "scholaraio.services.backup.build_rsync_command",
         lambda *_args, **_kwargs: ["rsync", "-a", "/src/", "alice@host:/dst/"],

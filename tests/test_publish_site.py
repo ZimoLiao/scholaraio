@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+import scholaraio.core.log as target_log
 from scholaraio.core.config import _build_config
 
 
@@ -101,7 +102,7 @@ def test_cmd_publish_site_uses_configured_output_dir(tmp_path: Path, monkeypatch
         seen["copy_assets"] = copy_assets
         return Namespace(paper_count=2)
 
-    monkeypatch.setattr(cli, "ui", messages.append)
+    monkeypatch.setattr(target_log, "ui", messages.append)
     monkeypatch.setattr("scholaraio.services.publish_site.generate_site", fake_generate_site)
 
     cli.cmd_publish_site(Namespace(out_dir=None, symlink=False), cfg)

@@ -433,3 +433,39 @@ def test_library_search_real_index_matches_library_stable_id(tmp_path):
 
     assert [result["paper_id"] for result in response["results"]] == ["target-paper"]
     assert response["diagnostics"]["status"] == "ok"
+
+
+def test_semantic_results_describe_current_metadata_even_with_stale_vectors(tmp_path, monkeypatch):
+    cfg = _build_config({}, tmp_path)
+    _write_paper(
+        cfg.papers_dir,
+        "renamed",
+        paper_id="paper",
+        title="Current title",
+        authors=["Current author"],
+        year=2026,
+        journal="",
+        doi="",
+    )
+    monkeypatch.setattr(
+        "scholaraio.services.vectors.vsearch",
+        lambda *args, **kwargs: [
+            {
+                "paper_id": "paper",
+                "title": "Old title",
+                "authors": "Old author",
+                "year": 2020,
+                "journal": "Removed journal",
+                "dir_name": "old-directory",
+                "score": 0.91,
+            }
+        ],
+    )
+    response = search_main_library(cfg, query="research", mode="semantic")
+    result = response["results"][0]
+    assert result["title"] == "Current title"
+    assert result["authors"] == "Current author"
+    assert result["year"] == "2026"
+    assert result["journal"] == ""
+    assert result["dir_name"] == "renamed"
+    assert result["score"] == 0.91

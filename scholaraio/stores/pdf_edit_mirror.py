@@ -40,6 +40,11 @@ class PdfEditMirrorRecord:
 
 
 _SCHEMA = """
+CREATE TABLE IF NOT EXISTS pdf_recovery_ack (
+    sync_id TEXT NOT NULL, path TEXT NOT NULL, content_hash TEXT NOT NULL,
+    size INTEGER NOT NULL, mtime_ns INTEGER NOT NULL, inode INTEGER NOT NULL,
+    PRIMARY KEY (sync_id, path)
+);
 CREATE TABLE IF NOT EXISTS pdf_edit_mirrors (
     sync_id TEXT PRIMARY KEY,
     library_kind TEXT NOT NULL,
@@ -126,6 +131,22 @@ class PdfEditMirrorStore:
             next_retry_at=float(row["next_retry_at"]),
             retired_at=float(row["retired_at"]) if row["retired_at"] is not None else None,
         )
+
+    def recovery_acknowledgements(self, sync_id: str) -> dict[str, tuple[str, int, int, int]]:
+        with self._connect() as connection:
+            return {
+                row[0]: (row[1], row[2], row[3], row[4])
+                for row in connection.execute(
+                    "SELECT path, content_hash, size, mtime_ns, inode FROM pdf_recovery_ack WHERE sync_id=?", (sync_id,)
+                )
+            }
+
+    def acknowledge_recovery(self, sync_id: str, versions: dict[str, tuple[str, int, int, int]]) -> None:
+        with self._connect() as connection:
+            connection.executemany(
+                "INSERT OR REPLACE INTO pdf_recovery_ack VALUES (?, ?, ?, ?, ?, ?)",
+                [(sync_id, path, *identity) for path, identity in versions.items()],
+            )
 
     def get_or_create(
         self,
@@ -287,6 +308,7 @@ class PdfEditMirrorStore:
     def delete(self, sync_id: str) -> None:
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            connection.execute("DELETE FROM pdf_recovery_ack WHERE sync_id = ?", (sync_id,))
             connection.execute("DELETE FROM pdf_edit_mirrors WHERE sync_id = ?", (sync_id,))
 
     @staticmethod

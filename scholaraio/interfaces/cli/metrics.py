@@ -7,23 +7,13 @@ import logging
 
 
 def _ui(msg: str = "") -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        from scholaraio.core.log import ui as log_ui
+    from scholaraio.core import log
 
-        log_ui(msg)
-        return
-    cli_mod.ui(msg)
+    log.ui(msg)
 
 
 def _log_error(msg: str) -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        logging.getLogger(__name__).error(msg)
-        return
-    cli_mod._log.error(msg)
+    logging.getLogger(__name__).error(msg)
 
 
 def cmd_metrics(args: argparse.Namespace, cfg) -> None:

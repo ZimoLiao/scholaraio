@@ -2,8 +2,17 @@
 
 from __future__ import annotations
 
+import pytest
+
 from scholaraio.services.ingest_metadata._api import enrich_metadata
 from scholaraio.services.ingest_metadata._models import PaperMetadata
+
+
+@pytest.fixture(autouse=True)
+def isolate_relaxed_discovery(monkeypatch):
+    """Enrichment fixtures never fall through to real title-discovery APIs."""
+    monkeypatch.setattr("scholaraio.services.ingest_metadata._api._query_crossref_relaxed", lambda *_: {})
+    monkeypatch.setattr("scholaraio.services.ingest_metadata._api._query_oa_relaxed", lambda *_: {})
 
 
 def test_enrich_metadata_prefers_arxiv_year_over_s2_year_for_preprint(monkeypatch):

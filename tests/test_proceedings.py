@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import scholaraio.core.log as target_log
 from scholaraio.core.config import _build_config
 from scholaraio.interfaces.cli import compat as cli
 from scholaraio.services.index import build_proceedings_index, search_proceedings
@@ -664,7 +665,7 @@ def test_fsearch_proceedings_scope_returns_proceedings_results(tmp_path: Path, m
     )
 
     messages: list[str] = []
-    monkeypatch.setattr(cli, "ui", lambda message="": messages.append(message))
+    monkeypatch.setattr(target_log, "ui", lambda message="": messages.append(message))
 
     cli.cmd_fsearch(type("Args", (), {"query": ["granular"], "scope": "proceedings", "top": 10})(), cfg)
 
@@ -679,7 +680,7 @@ def test_fsearch_main_scope_excludes_proceedings_results(tmp_path: Path, monkeyp
     cfg.ensure_dirs()
 
     messages: list[str] = []
-    monkeypatch.setattr(cli, "ui", lambda message="": messages.append(message))
+    monkeypatch.setattr(target_log, "ui", lambda message="": messages.append(message))
 
     cli.cmd_fsearch(type("Args", (), {"query": ["granular"], "scope": "main", "top": 10})(), cfg)
 
@@ -719,7 +720,7 @@ def test_cli_proceedings_apply_split_applies_plan_and_reports_success(tmp_path: 
     parser = cli._build_parser()
     args = parser.parse_args(["proceedings", "apply-split", str(proceeding_dir), str(split_plan_path)])
     messages: list[str] = []
-    monkeypatch.setattr(cli, "ui", lambda message="": messages.append(message))
+    monkeypatch.setattr(target_log, "ui", lambda message="": messages.append(message))
 
     args.func(args, cfg)
 
@@ -931,7 +932,7 @@ def test_cli_proceedings_clean_commands_build_and_apply(tmp_path: Path, monkeypa
 
     parser = cli._build_parser()
     messages: list[str] = []
-    monkeypatch.setattr(cli, "ui", lambda message="": messages.append(message))
+    monkeypatch.setattr(target_log, "ui", lambda message="": messages.append(message))
 
     args = parser.parse_args(["proceedings", "build-clean-candidates", str(proceeding_dir)])
     args.func(args, cfg)

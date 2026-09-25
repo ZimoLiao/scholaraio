@@ -22,12 +22,12 @@ The main library offers four explicit modes.
 
 | Mode | What it searches | Index required |
 | --- | --- | --- |
-| **Metadata** | The currently loaded title, author, journal/source, DOI, IDs, and directory name | None |
+| **Metadata** | Title, author, journal/source, DOI, IDs, and directory name across the whole library | None |
 | **Keyword** | FTS5 title, abstract, and conclusion text | Keyword index |
 | **Semantic** | Vector similarity over embedded paper metadata/content | Embeddings and the configured embedding provider |
 | **Unified** | Reciprocal-rank fusion of Keyword and Semantic results | Keyword index; embeddings recommended |
 
-Metadata mode filters immediately. Keyword, Semantic, and Unified modes run ranked retrieval on the server when you choose **Search** or press Enter in the query field. Ranked rows show their rank, retrieval leg, and score. Click a column heading to sort the current result set by that field; run the search again to restore relevance order.
+Metadata mode applies server-side filters across the whole library after a short typing delay. Keyword, Semantic, and Unified modes run ranked retrieval on the server when you choose **Search** or press Enter in the query field. Ranked rows show their rank, retrieval leg, and score. Click a column heading to sort the current result set by that field; run the search again to restore relevance order.
 
 Proceedings child papers currently support Metadata mode only. The mode selector is disabled on the Proceedings tab and the limitation is shown directly in the search status area.
 
@@ -82,7 +82,7 @@ When ScholarAIO can reach a desktop safely, choose **Open in default viewer** to
 
 On native Windows, macOS, and Linux, the viewer opens the canonical local PDF directly. On WSL, ScholarAIO instead maintains one stable edit mirror per library PDF under `%LOCALAPPDATA%\ScholarAIO\editable-pdfs`. The readable filename no longer receives a new random prefix on every launch. The Windows default association is respected, including applications such as Foxit Reader.
 
-When the reader saves an embedded annotation, highlight, comment, form value, or other PDF change, ScholarAIO waits for a stable complete file, validates it, and automatically writes a valid one-sided edit back to the canonical WSL library PDF. Canonical refetches flow in the other direction. If both sides changed to different contents, synchronization pauses with a conflict and keeps both files. Preserve both copies and reconcile their contents; once they contain the same PDF, automatic synchronization resumes. A conflict does not automatically launch or download either version. Reconciliation uses atomic replacement and keeps one bounded recovery copy under `data/state/pdf-edit-mirror/`.
+When the reader saves an embedded annotation, highlight, comment, form value, or other PDF change, ScholarAIO waits for a stable complete file, validates it, and automatically writes a valid one-sided edit back to the canonical WSL library PDF. Canonical refetches flow in the other direction. If both sides changed to different contents, synchronization pauses with a conflict and keeps both files. Use **Review PDF versions** to inspect, download and explicitly select the desired version; automatic synchronization then resumes. A conflict does not automatically launch or download either version. Reconciliation uses guarded publication, a recovery backup, and retained reader-save files; conflict recovery archives are not automatically deleted.
 
 The synchronization monitor survives WebUI and machine restarts because mirror mappings and hashes are stored in `data/state/pdf-edit-mirror/sync.db`. A reader may keep saving after the WebUI stops; the next WebUI startup detects and reconciles that edit. Old random files under the legacy Windows temporary `ScholarAIO` folder are cleanup-only and are never adopted or written back.
 
@@ -130,4 +130,54 @@ Metadata quality checks run in the background. The list can appear before the fi
 
 List requests use ETags so unchanged results return without the full payload. PDF delivery supports single byte ranges and validation with ETags, including after edits. Large first-time Windows opens still need a validated mirror copy; the UI reports preparation while this happens. `Server-Timing` on successful native-open requests separates lookup, mirror preparation, and launcher time. The settle/lock budget does not impose a hard deadline on file copying, and launcher completion does not mean the external viewer has finished rendering.
 
-When resolving a PDF conflict manually, stop the WebUI monitor first, save both the canonical library PDF and the Windows edit mirror elsewhere, then reconcile the desired PDF into both locations. Mirrors live under `%LOCALAPPDATA%\ScholarAIO\editable-pdfs\`; canonical files are in the configured library. Restart the WebUI after reconciling. This preserves a separate copy of each edit while synchronization is paused.
+Use **Review PDF versions** (described below) to resolve conflicts with version
+checks and retained copies. Close PDF readers before confirming a selection.
+
+## Paged browsing and explicit PDF recovery
+
+The table loads 100 records at a time. Previous/Next move between pages; metadata
+filters and sorting apply to the whole library. Type and volume choices also
+come from the whole library. A changed library revision resets an obsolete page
+to the first page. The Refresh button forces a new filesystem scan; automatic
+scans normally start about five seconds apart. Slow disks can extend this delay.
+Text selection, inline reading and conflict review suspend background DOM refresh.
+
+**Open in default viewer** remains the normal editable-PDF action. **Read in
+browser** uses the streaming PDF route without preparing a Windows edit mirror.
+Browser reading does not save changes into the library; download a copy if needed.
+The first editable open of a large PDF still needs a safe copy. The interface
+shows preparation status, and server logs/`Server-Timing` distinguish lookup,
+preparation and viewer-launch dispatch. Dispatch timing does not measure when
+Windows finishes rendering the document.
+
+When synchronization reports a conflict, choose **Review PDF versions**. Preview
+or download the canonical, mirror and retained reader-save versions. Download
+both if you want to keep independent copies. Damaged/partial versions can be
+downloaded for manual recovery, but cannot be previewed or selected. To synchronize a chosen version:
+
+1. Close all PDF readers, including recovery previews.
+2. Check the reader-closed confirmation.
+3. Choose **Use this version for both copies** beside the intended version.
+
+The server checks that the inspected versions have not changed. A concurrent
+save rejects the old decision; inspect again. All valid versions are archived
+under `data/state/pdf-edit-mirror/resolutions/` (or the configured state root),
+and displaced files remain beside their original PDF in
+`.scholaraio-pdf-recovery/`. Nothing is automatically deleted by conflict
+resolution. A late save through an old file handle reopens the conflict.
+
+Agents can use the same recovery service:
+
+```bash
+python -m scholaraio.cli pdf-recovery inspect PAPER_ID
+python -m scholaraio.cli pdf-recovery export PAPER_ID --token TOKEN --version canonical --output copy.pdf
+python -m scholaraio.cli pdf-recovery resolve PAPER_ID --token TOKEN --version mirror --readers-closed
+```
+
+`TOKEN` and version IDs come from `inspect`. Add `--source proceedings` for a
+proceedings paper. Export refuses to overwrite an existing output file. Keep
+recovery files until you have verified the intended annotations and closed every
+reader; storage cleanup remains an explicit manual action.
+
+See [Library projection contracts](../design-docs/library-projections.md) for
+index freshness, pagination and performance budgets.

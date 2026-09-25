@@ -15,14 +15,9 @@ def _workspace_root(cfg) -> Path:
 
 
 def _ui(msg: str = "") -> None:
-    try:
-        from scholaraio.interfaces.cli import compat as cli_mod
-    except ImportError:
-        from scholaraio.core.log import ui as log_ui
+    from scholaraio.core import log
 
-        log_ui(msg)
-        return
-    cli_mod.ui(msg)
+    log.ui(msg)
 
 
 def cmd_insights(args: argparse.Namespace, cfg) -> None:

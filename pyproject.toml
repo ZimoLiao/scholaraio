@@ -155,13 +155,26 @@ check_untyped_defs = true
 module = [
     "scholaraio.services.topics",
     "scholaraio.services.vectors",
-    "scholaraio.cli",
 
     "scholaraio.stores.explore",
     "scholaraio.services.ingest.*",
     "scholaraio.services.ingest_metadata.*",
 ]
 ignore_errors = true
+
+# Check executable bodies at persistent-data and HTTP boundaries.
+[[tool.mypy.overrides]]
+module = [
+    "scholaraio.core.config",
+    "scholaraio.core.fileio",
+    "scholaraio.stores.papers",
+    "scholaraio.stores.library_state",
+    "scholaraio.stores.pdf_edit_mirror",
+    "scholaraio.services.library_catalog",
+    "scholaraio.services.pdf_conflicts",
+    "scholaraio.interfaces.cli.gui",
+]
+check_untyped_defs = true
 
 # ---------- pytest ----------
 [tool.pytest.ini_options]
