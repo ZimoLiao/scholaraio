@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import threading
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from time import monotonic
 from typing import TYPE_CHECKING
@@ -30,6 +32,52 @@ if TYPE_CHECKING:
 _AUDIT_CACHE_TTL_SECONDS = 30.0
 _AUDIT_CACHE: dict[str, tuple[float, dict[str, list[dict]]]] = {}
 _AUDIT_CACHE_LOCK = threading.Lock()
+_BACKGROUND_AUDIT_LOCK = threading.Lock()
+_BACKGROUND_AUDITS: set[str] = set()
+_AUDIT_STATUS: dict[str, dict] = {}
+_LOG = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=8)
+def _paper_paths(root: Path) -> dict[str, Path]:
+    # These are hints only: always validate current metadata before using one.
+    return {}
+
+
+def main_audit_status(papers_dir: Path) -> dict:
+    with _BACKGROUND_AUDIT_LOCK:
+        return dict(_AUDIT_STATUS.get(str(papers_dir.resolve()), {"state": "pending", "completed_at": ""}))
+
+
+def _background_issue_map(papers_dir: Path) -> dict[str, list[dict]]:
+    key = str(papers_dir.resolve())
+    cached = _AUDIT_CACHE.get(key)
+    now = monotonic()
+    if cached and cached[0] > now:
+        return cached[1]
+    with _BACKGROUND_AUDIT_LOCK:
+        status = _AUDIT_STATUS.get(key, {})
+        if key not in _BACKGROUND_AUDITS and status.get("retry_at", 0) <= now:
+            _BACKGROUND_AUDITS.add(key)
+            _AUDIT_STATUS[key] = {"state": "running", "completed_at": status.get("completed_at", "")}
+
+            def refresh() -> None:
+                try:
+                    _main_issue_map(papers_dir)
+                except Exception:
+                    _LOG.exception("Background library audit failed")
+                    with _BACKGROUND_AUDIT_LOCK:
+                        _AUDIT_STATUS[key] = {
+                            "state": "failed",
+                            "completed_at": status.get("completed_at", ""),
+                            "retry_at": monotonic() + _AUDIT_CACHE_TTL_SECONDS,
+                        }
+                finally:
+                    with _BACKGROUND_AUDIT_LOCK:
+                        _BACKGROUND_AUDITS.discard(key)
+
+            threading.Thread(target=refresh, name="scholaraio-library-audit", daemon=True).start()
+    return cached[1] if cached else {}
 
 
 class LibraryPaperNotFoundError(KeyError):
@@ -93,7 +141,9 @@ def _main_issue_map(papers_dir: Path) -> dict[str, list[dict]]:
         for issue in audit_papers(papers_dir):
             by_dir[issue.paper_id].append(_issue_dict(issue))
         issue_map = dict(by_dir)
-        _AUDIT_CACHE[cache_key] = (now + _AUDIT_CACHE_TTL_SECONDS, issue_map)
+        _AUDIT_CACHE[cache_key] = (monotonic() + _AUDIT_CACHE_TTL_SECONDS, issue_map)
+        with _BACKGROUND_AUDIT_LOCK:
+            _AUDIT_STATUS[cache_key] = {"state": "ready", "completed_at": _now_iso()}
         return issue_map
 
 
@@ -148,10 +198,14 @@ def _main_row(paper_dir: Path, meta: dict, issues: list[dict]) -> dict:
     }
 
 
-def build_main_library_view(cfg: Config) -> dict:
+def build_main_library_view(cfg: Config, *, background_audit: bool = False) -> dict:
     """Return a live read-only table view for the configured main paper library."""
     papers_dir = cfg.papers_dir
-    issue_map = _main_issue_map(papers_dir)
+    if background_audit:
+        cached = _AUDIT_CACHE.get(str(papers_dir.resolve()))
+        issue_map = cached[1] if cached else {}
+    else:
+        issue_map = _main_issue_map(papers_dir)
     rows: list[dict] = []
     totals = _empty_issue_counts()
     for paper_dir in iter_paper_dirs(papers_dir):
@@ -162,24 +216,46 @@ def build_main_library_view(cfg: Config) -> dict:
             meta = {"id": paper_dir.name, "title": paper_dir.name}
         else:
             issues = issue_map.get(paper_dir.name, [])
+        paths = _paper_paths(papers_dir.resolve())
+        paths[str(meta.get("id") or paper_dir.name)] = paper_dir
+        paths[paper_dir.name] = paper_dir
         row = _main_row(paper_dir, meta, issues)
         for key, value in row["issue_counts"].items():
             totals[key] += value
         rows.append(row)
 
     rows.sort(key=lambda row: (str(row.get("year") or ""), row.get("title") or ""), reverse=True)
+    if background_audit:
+        # Build the first useful view before starting CPU-heavy audit work.
+        _background_issue_map(papers_dir)
     return {
         "source": "main",
         "root": str(papers_dir),
         "generated_at": _now_iso(),
         "total": len(rows),
         "issue_totals": totals,
+        "audit": main_audit_status(papers_dir),
         "papers": rows,
     }
 
 
-def _find_main_paper(cfg: Config, paper_id: str, *, include_issues: bool = True) -> tuple[Path, dict, list[dict]]:
-    issue_map = _main_issue_map(cfg.papers_dir) if include_issues else {}
+def _find_main_paper(
+    cfg: Config, paper_id: str, *, include_issues: bool = True, background_audit: bool = False
+) -> tuple[Path, dict, list[dict]]:
+    issue_map = {}
+    if include_issues:
+        issue_map = _background_issue_map(cfg.papers_dir) if background_audit else _main_issue_map(cfg.papers_dir)
+    paths = _paper_paths(cfg.papers_dir.resolve())
+    cached = paths.get(paper_id)
+    if cached is not None:
+        try:
+            meta = read_meta(cached)
+        except (ValueError, OSError):
+            paths.pop(paper_id, None)
+        else:
+            if paper_id in {meta.get("id") or cached.name, cached.name}:
+                return cached, meta, issue_map.get(cached.name, [])
+            paths.pop(paper_id, None)
     for paper_dir in iter_paper_dirs(cfg.papers_dir):
         try:
             meta = read_meta(paper_dir)
@@ -192,17 +268,20 @@ def _find_main_paper(cfg: Config, paper_id: str, *, include_issues: bool = True)
                 )
             continue
         current_id = meta.get("id") or paper_dir.name
+        paths[current_id] = paper_dir
+        paths[paper_dir.name] = paper_dir
         if paper_id in {current_id, paper_dir.name}:
             return paper_dir, meta, issue_map.get(paper_dir.name, [])
     raise KeyError(paper_id)
 
 
-def get_main_paper_detail(cfg: Config, paper_id: str) -> dict:
+def get_main_paper_detail(cfg: Config, paper_id: str, *, background_audit: bool = False) -> dict:
     """Return detailed read-only metadata for one main-library paper."""
-    paper_dir, meta, issues = _find_main_paper(cfg, paper_id)
+    paper_dir, meta, issues = _find_main_paper(cfg, paper_id, background_audit=background_audit)
     row = _main_row(paper_dir, meta, issues)
     return {
         **row,
+        "audit": main_audit_status(cfg.papers_dir),
         "abstract": meta.get("abstract") or "",
         "l3_conclusion": meta.get("l3_conclusion") or "",
         "toc": meta.get("toc") or [],
@@ -248,8 +327,9 @@ def _proceedings_row(cfg: Config, row: dict, *, meta: dict | None = None, issues
     }
 
 
-def _iter_proceedings_view_records(cfg: Config):
-    for proceeding_dir in iter_proceedings_dirs(cfg.proceedings_dir):
+def _iter_proceedings_view_records(cfg: Config, *, only: Path | None = None):
+    volumes = [only.parent.parent] if only is not None else iter_proceedings_dirs(cfg.proceedings_dir)
+    for proceeding_dir in volumes:
         meta_path = proceeding_dir / "meta.json"
         papers_dir = proceeding_dir / "papers"
         if not meta_path.exists() or not papers_dir.is_dir():
@@ -265,7 +345,7 @@ def _iter_proceedings_view_records(cfg: Config):
         proceeding_id = proceeding_meta.get("id") or proceeding_dir.name
 
         try:
-            paper_dirs = sorted(papers_dir.iterdir())
+            paper_dirs = [only] if only is not None else sorted(papers_dir.iterdir())
         except OSError:
             continue
         for paper_dir in paper_dirs:
@@ -297,6 +377,9 @@ def _iter_proceedings_view_records(cfg: Config):
                 "proceeding_dir": proceeding_dir.name,
                 "proceeding_title": paper_meta.get("proceeding_title") or proceeding_title,
             }
+            paths = _paper_paths(cfg.proceedings_dir.resolve())
+            paths[row["paper_id"]] = paper_dir
+            paths[paper_dir.name] = paper_dir
             yield _proceedings_row(cfg, row, meta=paper_meta, issues=issues), paper_dir, paper_meta
 
 
@@ -321,6 +404,13 @@ def build_proceedings_library_view(cfg: Config) -> dict:
 
 
 def _find_proceedings_row(cfg: Config, paper_id: str) -> tuple[dict, Path, dict]:
+    paths = _paper_paths(cfg.proceedings_dir.resolve())
+    cached = paths.get(paper_id)
+    if cached is not None:
+        for row, paper_dir, meta in _iter_proceedings_view_records(cfg, only=cached):
+            if paper_id in {row["paper_id"], row["dir_name"]}:
+                return row, paper_dir, meta
+        paths.pop(paper_id, None)
     for row, paper_dir, meta in _iter_proceedings_view_records(cfg):
         if paper_id in {row["paper_id"], row["dir_name"]}:
             return row, paper_dir, meta
@@ -472,7 +562,10 @@ def resolve_pdf_edit_mirror_target(
                     record is not None and record.identity and _pdf_sync_identity(candidate_meta) == record.identity
                 )
                 same_hash = bool(
-                    record is not None and record.base_hash and _pdf_sync_hash_matches(candidate_pdf, record.base_hash)
+                    not (same_file or same_identity)
+                    and record is not None
+                    and record.base_hash
+                    and _pdf_sync_hash_matches(candidate_pdf, record.base_hash)
                 )
                 if same_file or same_identity or same_hash:
                     candidates.append((candidate_dir, candidate_meta))
@@ -496,7 +589,10 @@ def resolve_pdf_edit_mirror_target(
                     record is not None and record.identity and _pdf_sync_identity(candidate_meta) == record.identity
                 )
                 same_hash = bool(
-                    record is not None and record.base_hash and _pdf_sync_hash_matches(candidate_pdf, record.base_hash)
+                    not (same_file or same_identity)
+                    and record is not None
+                    and record.base_hash
+                    and _pdf_sync_hash_matches(candidate_pdf, record.base_hash)
                 )
                 if same_file or same_identity or same_hash:
                     candidates.append((candidate_dir, candidate_meta))

@@ -16,10 +16,14 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 import yaml
+
+from scholaraio.core.fileio import atomic_write_text, file_lock
 
 _log = logging.getLogger(__name__)
 
@@ -287,12 +291,22 @@ def _read(ws_dir: Path) -> list[dict]:
 def _write(ws_dir: Path, entries: list[dict]) -> None:
     pj = _paper_index_path(ws_dir)
     pj.parent.mkdir(parents=True, exist_ok=True)
-    tmp = pj.with_suffix(".json.tmp")
-    tmp.write_text(
-        json.dumps(entries, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    tmp.replace(pj)
+    atomic_write_text(pj, json.dumps(entries, indent=2, ensure_ascii=False) + "\n")
+
+
+@contextmanager
+def _workspace_lock(ws_dir: Path, *, create_workspace: bool = False) -> Iterator[None]:
+    """Serialize reference writes and rename across one workspace collection."""
+    if create_workspace:
+        ws_dir.parent.mkdir(parents=True, exist_ok=True)
+    # This synthetic record puts the persistent sidecar outside the collection,
+    # so no open lock handle travels with a renamed workspace on Windows.
+    with file_lock(ws_dir.parent / ".workspace-references"):
+        if create_workspace:
+            ws_dir.mkdir(exist_ok=True)
+        elif not ws_dir.exists():
+            raise FileNotFoundError(f"工作区不存在: {ws_dir.name}")
+        yield
 
 
 # ============================================================================
@@ -309,11 +323,11 @@ def create(ws_dir: Path) -> Path:
     Returns:
         论文索引文件路径。
     """
-    ws_dir.mkdir(parents=True, exist_ok=True)
     pj = _paper_index_path(ws_dir)
-    if not pj.exists():
-        _write(ws_dir, [])
-    return pj
+    with _workspace_lock(ws_dir, create_workspace=True):
+        if not pj.exists():
+            _write(ws_dir, [])
+        return pj
 
 
 def add(
@@ -341,48 +355,49 @@ def add(
     Returns:
         新增条目列表。
     """
-    entries = _read(ws_dir)
-    existing_ids = {e["id"] for e in entries}
-    added: list[dict] = []
-    now = datetime.now(timezone.utc).isoformat()
+    with _workspace_lock(ws_dir):
+        entries = _read(ws_dir)
+        existing_ids = {e["id"] for e in entries}
+        added: list[dict] = []
+        now = datetime.now(timezone.utc).isoformat()
 
-    if resolved is not None:
-        required_keys = {"id", "dir_name"}
-        for idx, rec in enumerate(resolved):
-            if not isinstance(rec, dict):
-                raise ValueError(
-                    f"resolved[{idx}] must be a dict with keys {sorted(required_keys)}, got {type(rec).__name__!s}"
-                )
-            missing = required_keys.difference(rec.keys())
-            if missing:
-                raise ValueError(f"resolved[{idx}] is missing required keys {sorted(missing)}: {rec!r}")
-            uid = rec["id"]
-            if uid in existing_ids:
-                continue
-            entry = {"id": uid, "dir_name": rec["dir_name"], "added_at": now}
-            entries.append(entry)
-            existing_ids.add(uid)
-            added.append(entry)
-    else:
-        from scholaraio.services.index import lookup_paper
+        if resolved is not None:
+            required_keys = {"id", "dir_name"}
+            for idx, rec in enumerate(resolved):
+                if not isinstance(rec, dict):
+                    raise ValueError(
+                        f"resolved[{idx}] must be a dict with keys {sorted(required_keys)}, got {type(rec).__name__!s}"
+                    )
+                missing = required_keys.difference(rec.keys())
+                if missing:
+                    raise ValueError(f"resolved[{idx}] is missing required keys {sorted(missing)}: {rec!r}")
+                uid = rec["id"]
+                if uid in existing_ids:
+                    continue
+                entry = {"id": uid, "dir_name": rec["dir_name"], "added_at": now}
+                entries.append(entry)
+                existing_ids.add(uid)
+                added.append(entry)
+        else:
+            from scholaraio.services.index import lookup_paper
 
-        for ref in paper_refs:
-            record = lookup_paper(db_path, ref)
-            if record is None:
-                _log.warning("无法解析论文引用: %s", ref)
-                continue
-            uid = record["id"]
-            if uid in existing_ids:
-                _log.debug("已存在，跳过: %s", ref)
-                continue
-            entry = {"id": uid, "dir_name": record["dir_name"], "added_at": now}
-            entries.append(entry)
-            existing_ids.add(uid)
-            added.append(entry)
+            for ref in paper_refs:
+                record = lookup_paper(db_path, ref)
+                if record is None:
+                    _log.warning("无法解析论文引用: %s", ref)
+                    continue
+                uid = record["id"]
+                if uid in existing_ids:
+                    _log.debug("已存在，跳过: %s", ref)
+                    continue
+                entry = {"id": uid, "dir_name": record["dir_name"], "added_at": now}
+                entries.append(entry)
+                existing_ids.add(uid)
+                added.append(entry)
 
-    if added:
-        _write(ws_dir, entries)
-    return added
+        if added:
+            _write(ws_dir, entries)
+        return added
 
 
 def remove(ws_dir: Path, paper_refs: list[str], db_path: Path) -> list[dict]:
@@ -398,32 +413,33 @@ def remove(ws_dir: Path, paper_refs: list[str], db_path: Path) -> list[dict]:
     """
     from scholaraio.services.index import lookup_paper
 
-    entries = _read(ws_dir)
-    remove_ids: set[str] = set()
-    remove_dir_names: set[str] = set()
-    entry_ids = {e["id"] for e in entries}
-    entry_dir_names = {e.get("dir_name") for e in entries}
-    for ref in paper_refs:
-        try:
-            record = lookup_paper(db_path, ref)
-        except sqlite3.Error as exc:
-            _log.warning("lookup_paper 失败，回退到工作区可见标识: %s", exc)
-            record = None
-        if record:
-            remove_ids.add(record["id"])
-        else:
-            # Fall back to exact workspace-visible identifiers when the index is stale
-            # or unavailable, so users can still remove items they see in `ws show`.
-            if ref in entry_ids:
-                remove_ids.add(ref)
-            elif ref in entry_dir_names:
-                remove_dir_names.add(ref)
+    with _workspace_lock(ws_dir):
+        entries = _read(ws_dir)
+        remove_ids: set[str] = set()
+        remove_dir_names: set[str] = set()
+        entry_ids = {e["id"] for e in entries}
+        entry_dir_names = {e.get("dir_name") for e in entries}
+        for ref in paper_refs:
+            try:
+                record = lookup_paper(db_path, ref)
+            except sqlite3.Error as exc:
+                _log.warning("lookup_paper 失败，回退到工作区可见标识: %s", exc)
+                record = None
+            if record:
+                remove_ids.add(record["id"])
+            else:
+                # Fall back to exact workspace-visible identifiers when the index is stale
+                # or unavailable, so users can still remove items they see in `ws show`.
+                if ref in entry_ids:
+                    remove_ids.add(ref)
+                elif ref in entry_dir_names:
+                    remove_dir_names.add(ref)
 
-    removed = [e for e in entries if e["id"] in remove_ids or e.get("dir_name") in remove_dir_names]
-    if removed:
-        entries = [e for e in entries if e["id"] not in remove_ids and e.get("dir_name") not in remove_dir_names]
-        _write(ws_dir, entries)
-    return removed
+        removed = [e for e in entries if e["id"] in remove_ids or e.get("dir_name") in remove_dir_names]
+        if removed:
+            entries = [e for e in entries if e["id"] not in remove_ids and e.get("dir_name") not in remove_dir_names]
+            _write(ws_dir, entries)
+        return removed
 
 
 def list_workspaces(ws_root: Path) -> list[str]:
@@ -488,16 +504,17 @@ def show(ws_dir: Path, db_path: Path) -> list[dict]:
     """
     from scholaraio.services.index import lookup_paper
 
-    entries = _read(ws_dir)
-    changed = False
-    for e in entries:
-        record = lookup_paper(db_path, e["id"])
-        if record and record["dir_name"] != e.get("dir_name"):
-            e["dir_name"] = record["dir_name"]
-            changed = True
-    if changed:
-        _write(ws_dir, entries)
-    return entries
+    with _workspace_lock(ws_dir):
+        entries = _read(ws_dir)
+        changed = False
+        for e in entries:
+            record = lookup_paper(db_path, e["id"])
+            if record and record["dir_name"] != e.get("dir_name"):
+                e["dir_name"] = record["dir_name"]
+                changed = True
+        if changed:
+            _write(ws_dir, entries)
+        return entries
 
 
 def read_paper_ids(ws_dir: Path) -> set[str]:
@@ -534,16 +551,15 @@ def rename(ws_root: Path, old_name: str, new_name: str) -> Path:
         raise ValueError(f"非法工作区名称: {new_name}")
     old_dir = ws_root / old_name
     new_dir = ws_root / new_name
-    if not old_dir.exists():
-        raise FileNotFoundError(f"工作区不存在: {old_name}")
-    if not old_dir.is_dir():
-        raise ValueError(f"不是有效工作区目录: {old_name}")
-    if not has_paper_index(old_dir):
-        raise ValueError(f"缺少工作区论文索引（refs/papers.json），无法重命名工作区: {old_name}")
-    if new_dir.exists():
-        raise FileExistsError(f"目标工作区已存在: {new_name}")
-    old_dir.rename(new_dir)
-    return new_dir
+    with _workspace_lock(old_dir):
+        if not old_dir.is_dir():
+            raise ValueError(f"不是有效工作区目录: {old_name}")
+        if not has_paper_index(old_dir):
+            raise ValueError(f"缺少工作区论文索引（refs/papers.json），无法重命名工作区: {old_name}")
+        if new_dir.exists():
+            raise FileExistsError(f"目标工作区已存在: {new_name}")
+        old_dir.rename(new_dir)
+        return new_dir
 
 
 def read_dir_names(ws_dir: Path, db_path: Path) -> set[str]:

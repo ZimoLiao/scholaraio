@@ -1,5 +1,6 @@
 const POLL_MS = 2200;
 const PDF_SYNC_POLL_MS = 5000;
+const responseCache = new Map();
 
 const state = {
   tab: "main",
@@ -29,6 +30,8 @@ const state = {
   pdfFullscreen: false,
   detailRequestSeq: 0,
   refreshRequestSeq: { main: 0, proceedings: 0 },
+  refreshInFlight: { main: 0, proceedings: 0 },
+  selectingText: false,
   filters: {
     search: "",
     title: "",
@@ -104,18 +107,31 @@ function setConnection(kind, label) {
 }
 
 async function fetchJson(url, options = {}) {
-  const response = await fetch(url, { cache: "no-store", ...options });
+  const { conditional = false, ...requestOptions } = options;
+  const cached = conditional ? responseCache.get(url) : null;
+  const headers = { ...requestOptions.headers };
+  if (cached?.etag) headers["If-None-Match"] = cached.etag;
+  const response = await fetch(url, {
+    cache: "no-store", signal: globalThis.AbortSignal?.timeout?.(60000), ...requestOptions, headers,
+  });
+  if (response.status === 304 && cached) return cached.payload;
   if (!response.ok) {
     let message = `${response.status || ""} ${response.statusText || "Request failed"}`.trim();
+    let code = "";
     try {
       const payload = await response.json();
       if (payload?.error) message = payload.error;
+      code = payload?.code || "";
     } catch (_err) {
       // Keep the HTTP fallback when an error body is not JSON.
     }
-    throw new Error(message);
+    const error = new Error(message);
+    error.code = code;
+    throw error;
   }
-  return response.json();
+  const payload = await response.json();
+  if (conditional) responseCache.set(url, { etag: response.headers?.get?.("ETag"), payload });
+  return payload;
 }
 
 async function loadCapabilities() {
@@ -342,7 +358,10 @@ function renderMetrics() {
   els.sourceCopyButton.disabled = !root;
   if (els.sourceCopyButton.textContent !== "Copied") els.sourceCopyButton.textContent = "Copy";
   els.metricTotal.textContent = String(payload?.total ?? "--");
-  els.updatedAt.textContent = formatDate(payload?.generated_at);
+  const audit = payload?.audit;
+  els.updatedAt.textContent = audit?.state === "running" ? "Checking metadata quality…" : formatDate(payload?.generated_at);
+  els.updatedAt.title = audit?.state === "failed" ? "Metadata quality check failed; it will retry automatically." :
+    audit?.completed_at ? `Metadata quality checked: ${formatDate(audit.completed_at)}` : "";
 }
 
 function rankedSearchUrl() {
@@ -683,7 +702,7 @@ function renderDetailActions(detail) {
 
 function renderPdfSyncStatus(status) {
   const stateName = String(status?.state || "not_opened");
-  const actionable = stateName === "sync_pending" || stateName === "sync_failed";
+  const actionable = ["sync_pending", "sync_failed", "conflict"].includes(stateName);
   els.pdfSyncStatus.hidden = !actionable;
   els.pdfSyncStatus.dataset.state = stateName;
   els.pdfSyncStatus.textContent = actionable
@@ -756,6 +775,15 @@ function schedulePdfSyncPolling(detail) {
 }
 
 function renderDetail(detail) {
+  if (detail && state.detail) {
+    const { pdf_sync: previousSync, audit: previousAudit, ...previousContent } = state.detail;
+    const { pdf_sync: nextSync, audit: nextAudit, ...nextContent } = detail;
+    if (JSON.stringify(previousContent) === JSON.stringify(nextContent)) {
+      state.detail = detail;
+      if (JSON.stringify(previousSync) !== JSON.stringify(nextSync)) renderPdfSyncStatus(nextSync);
+      return;
+    }
+  }
   if (!detail) {
     state.detail = null;
     els.detailTitle.textContent = "Select a record";
@@ -901,6 +929,7 @@ async function deliverSelectedPdf() {
   const source = state.tab === "main" ? "main" : "proceedings";
   setRecordActionBusy("nativePdf", true);
   try {
+    showToast("Preparing PDF for the default viewer…");
     await fetchJson(`/api/${source}/open-pdf`, {
       method: "POST",
       headers: {
@@ -912,7 +941,12 @@ async function deliverSelectedPdf() {
     showToast("PDF opened in the default viewer.");
     await refreshPdfSyncStatus();
   } catch (err) {
-    if (downloadPdf(detail)) {
+    if (err.code === "pdf_sync_conflict") {
+      showToast(String(err), "error");
+      await refreshPdfSyncStatus();
+    } else if (err.name === "TimeoutError" || err.name === "AbortError") {
+      showToast("PDF preparation has not responded yet. Check the default viewer before trying again.", "warning");
+    } else if (downloadPdf(detail)) {
       showToast(`The default viewer could not be opened, so the PDF was downloaded instead: ${String(err)}`, "warning");
     } else {
       showToast(`Could not open the default viewer: ${String(err)}`, "error");
@@ -951,24 +985,31 @@ function openPdf(row) {
   els.pdfViewer.hidden = false;
 }
 
-async function selectRow(paperId) {
+function deferBackgroundRefresh() {
+  return document.visibilityState === "hidden" || state.pdf || state.selectingText ||
+    Boolean(globalThis.getSelection?.()?.toString());
+}
+
+async function selectRow(paperId, { background = false } = {}) {
   const requestTab = state.tab;
   const requestSeq = ++state.detailRequestSeq;
+  const selectionChanged = state.selected[requestTab] !== paperId;
   state.selected[requestTab] = paperId;
-  if (state.tab === requestTab) renderTable();
+  if (selectionChanged) renderTable();
   try {
     const endpoint = requestTab === "main" ? "/api/main/detail" : "/api/proceedings/detail";
     const detail = await fetchJson(`${endpoint}?id=${encodeURIComponent(paperId)}`);
     if (state.tab !== requestTab || state.selected[requestTab] !== paperId || state.detailRequestSeq !== requestSeq) {
       return;
     }
-    state.detail = detail;
+    if (background && deferBackgroundRefresh()) return;
     renderDetail(detail);
     setConnection("live", "Live");
   } catch (err) {
     if (state.tab !== requestTab || state.selected[requestTab] !== paperId || state.detailRequestSeq !== requestSeq) {
       return;
     }
+    if (background && deferBackgroundRefresh()) return;
     setConnection("error", "Detail failed");
     renderDetail({ title: "Detail unavailable", abstract: String(err) });
   }
@@ -981,15 +1022,19 @@ function chooseDefaultSelection() {
   return rows[0]?.paper_id || "";
 }
 
-async function refreshActive({ keepSelection = true } = {}) {
+async function refreshActive({ keepSelection = true, background = false } = {}) {
   const requestTab = state.tab;
+  if (background && (deferBackgroundRefresh() || state.refreshInFlight[requestTab])) return;
   const requestSeq = ++state.refreshRequestSeq[requestTab];
+  state.refreshInFlight[requestTab] += 1;
   const endpoint = requestTab === "main" ? "/api/main/papers" : "/api/proceedings/papers";
   try {
-    const payload = await fetchJson(endpoint);
+    const payload = await fetchJson(endpoint, { conditional: true });
     if (state.refreshRequestSeq[requestTab] !== requestSeq) {
       return;
     }
+    if (background && deferBackgroundRefresh()) return;
+    const rowsChanged = JSON.stringify(state.rows[requestTab]) !== JSON.stringify(payload.papers || []);
     state.payload[requestTab] = payload;
     state.rows[requestTab] = payload.papers || [];
     if (state.tab !== requestTab) {
@@ -998,25 +1043,28 @@ async function refreshActive({ keepSelection = true } = {}) {
     if (state.pdf && !state.rows[requestTab].some((row) => row.pdf_url === state.pdf.url)) {
       showRecords();
     }
-    renderFilters();
+    if (rowsChanged || !state.detail) renderFilters();
     renderMetrics();
-    renderTable();
+    if (rowsChanged || !state.detail) renderTable();
     setConnection("live", "Live");
     const nextSelection = keepSelection ? chooseDefaultSelection() : filteredRows()[0]?.paper_id || "";
-    if (nextSelection) await selectRow(nextSelection);
+    if (nextSelection) await selectRow(nextSelection, { background });
     else renderDetail(null);
   } catch (err) {
-    if (state.tab !== requestTab) {
+    if (state.tab !== requestTab || state.refreshRequestSeq[requestTab] !== requestSeq ||
+        (background && deferBackgroundRefresh())) {
       return;
     }
     setConnection("error", "Refresh failed");
     els.tableCount.textContent = String(err);
+  } finally {
+    state.refreshInFlight[requestTab] -= 1;
   }
 }
 
 function schedulePoll() {
   clearInterval(state.pollTimer);
-  state.pollTimer = setInterval(() => refreshActive({ keepSelection: true }), POLL_MS);
+  state.pollTimer = setInterval(() => refreshActive({ keepSelection: true, background: true }), POLL_MS);
 }
 
 function switchTab(tab) {
@@ -1102,6 +1150,10 @@ function bindEvents() {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && state.pdfFullscreen) setPdfFullscreen(false);
   });
+  document.addEventListener("pointerdown", () => { state.selectingText = true; });
+  document.addEventListener("pointerup", () => { state.selectingText = false; });
+  document.addEventListener("pointercancel", () => { state.selectingText = false; });
+  globalThis.addEventListener?.("blur", () => { state.selectingText = false; });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") stopPdfSyncPolling();
     else schedulePdfSyncPolling(state.detail);

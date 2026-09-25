@@ -17,8 +17,10 @@ import json
 import re
 import shutil
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
+
+from scholaraio.core.fileio import atomic_write_text, file_lock
 
 _REVIEW_ONLY_JOURNAL_PREFIXES = (
     "annual review of ",
@@ -297,14 +299,28 @@ def write_meta(paper_d: Path, data: dict) -> None:
         paper_d: Paper directory path.
         data: Metadata dict to serialize.
     """
-    data = normalize_paper_metadata(data)
     p = paper_d / "meta.json"
-    tmp = p.with_suffix(".json.tmp")
-    tmp.write_text(
-        json.dumps(data, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    tmp.replace(p)
+    with file_lock(p):
+        _write_meta_unlocked(p, data)
+
+
+def _write_meta_unlocked(path: Path, data: dict) -> None:
+    atomic_write_text(path, json.dumps(normalize_paper_metadata(data), indent=2, ensure_ascii=False) + "\n")
+
+
+def modify_meta(paper_d: Path, edit: Callable[[dict], None]) -> dict:
+    """Apply a short in-memory edit to the latest metadata under a record lock.
+
+    Do expensive extraction/network work before entering this transaction.
+    ``write_meta`` replaces a whole record; use this or ``update_meta`` when
+    changing fields of an existing record so unrelated concurrent edits survive.
+    """
+    with file_lock(paper_d / "meta.json"):
+        data = read_meta(paper_d)
+        edit(data)
+        data = normalize_paper_metadata(data)
+        _write_meta_unlocked(paper_d / "meta.json", data)
+        return data
 
 
 def update_meta(paper_d: Path, **fields) -> dict:
@@ -317,8 +333,4 @@ def update_meta(paper_d: Path, **fields) -> dict:
     Returns:
         The updated metadata dict.
     """
-    data = read_meta(paper_d)
-    data.update(fields)
-    data = normalize_paper_metadata(data)
-    write_meta(paper_d, data)
-    return data
+    return modify_meta(paper_d, lambda data: data.update(fields))

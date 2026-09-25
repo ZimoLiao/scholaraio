@@ -235,6 +235,6 @@ def cmd_repair(args: argparse.Namespace, cfg) -> None:
     _ui(f"  Wrote: {json_path.name}")
 
     new_stem = generate_new_stem(meta)
-    rename_files(md_path, json_path, new_stem, dry_run=False)
+    rename_files(md_path, json_path, new_stem, dry_run=False, db_path=cfg.index_db)
 
     _log_debug("done. consider running pipeline reindex")

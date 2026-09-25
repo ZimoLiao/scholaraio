@@ -7,7 +7,10 @@ import json
 import logging
 import re
 import unicodedata
+from contextlib import nullcontext
 from pathlib import Path
+
+from scholaraio.core.fileio import file_lock
 
 _log = logging.getLogger(__name__)
 
@@ -105,7 +108,7 @@ def write_metadata_json(meta: PaperMetadata, output_path: Path) -> None:
 # ============================================================================
 
 
-def refetch_metadata(json_path: Path, *, references_only: bool = False) -> bool:
+def refetch_metadata(json_path: Path, *, references_only: bool = False, db_path: Path | None = None) -> bool:
     """对已入库论文重新查询 API，补全引用量等字段。
 
     从 JSON 反构造 :class:`PaperMetadata`，调用 :func:`enrich_metadata`
@@ -132,9 +135,9 @@ def refetch_metadata(json_path: Path, *, references_only: bool = False) -> bool:
         if not ref_dois or ref_dois == (data.get("references") or []):
             return False
         data["references"] = ref_dois
-        from scholaraio.stores.papers import write_meta
+        from scholaraio.stores.papers import update_meta
 
-        write_meta(json_path.parent, data)
+        update_meta(json_path.parent, references=ref_dois)
         return True
 
     meta = PaperMetadata(
@@ -264,11 +267,11 @@ def refetch_metadata(json_path: Path, *, references_only: bool = False) -> bool:
             break
 
     if changed:
-        from scholaraio.stores.papers import write_meta
+        from scholaraio.stores.papers import update_meta
 
-        write_meta(json_path.parent, new_data)
+        update_meta(json_path.parent, **{key: value for key, value in new_data.items() if value != data.get(key)})
         # Rename directory if metadata now yields a better name
-        new_path = rename_paper(json_path)
+        new_path = rename_paper(json_path, db_path=db_path)
         if new_path:
             _log.debug("renamed: %s -> %s", json_path.parent.name, new_path.parent.name)
 
@@ -280,7 +283,7 @@ def refetch_metadata(json_path: Path, *, references_only: bool = False) -> bool:
 # ============================================================================
 
 
-def rename_paper(json_path: Path, *, dry_run: bool = False) -> Path | None:
+def rename_paper(json_path: Path, *, dry_run: bool = False, db_path: Path | None = None) -> Path | None:
     """根据 JSON 元数据重命名论文目录。
 
     读取 ``meta.json`` 中的 ``first_author_lastname``、``year``、``title``，
@@ -293,49 +296,50 @@ def rename_paper(json_path: Path, *, dry_run: bool = False) -> Path | None:
     Returns:
         重命名后的新 ``meta.json`` 路径，未变更时返回 ``None``。
     """
-    data = json.loads(json_path.read_text(encoding="utf-8"))
-    meta = PaperMetadata(
-        title=data.get("title", ""),
-        first_author_lastname=data.get("first_author_lastname", ""),
-        year=data.get("year"),
-    )
-    new_stem = generate_new_stem(meta)
+    with nullcontext() if dry_run else file_lock(json_path):
+        data = json.loads(json_path.read_text(encoding="utf-8"))
+        meta = PaperMetadata(
+            title=data.get("title", ""),
+            first_author_lastname=data.get("first_author_lastname", ""),
+            year=data.get("year"),
+        )
+        new_stem = generate_new_stem(meta)
 
-    paper_d = json_path.parent
-    old_stem = paper_d.name
-    papers_root = paper_d.parent
+        paper_d = json_path.parent
+        old_stem = paper_d.name
+        papers_root = paper_d.parent
 
-    if new_stem == old_stem:
-        return None
+        if new_stem == old_stem:
+            return None
 
-    new_dir = papers_root / new_stem
+        new_dir = papers_root / new_stem
 
-    # Avoid collision with existing directories
-    if new_dir.exists() and new_dir != paper_d:
-        suffix = 2
-        while True:
-            candidate = f"{new_stem}-{suffix}"
-            candidate_dir = papers_root / candidate
-            if candidate_dir == paper_d or not candidate_dir.exists():
-                new_dir = candidate_dir
-                break
-            suffix += 1
+        # Avoid collision with existing directories
+        if new_dir.exists() and new_dir != paper_d:
+            suffix = 2
+            while True:
+                candidate = f"{new_stem}-{suffix}"
+                candidate_dir = papers_root / candidate
+                if candidate_dir == paper_d or not candidate_dir.exists():
+                    new_dir = candidate_dir
+                    break
+                suffix += 1
 
-    if new_dir == paper_d:
-        return None
+        if new_dir == paper_d:
+            return None
 
-    if dry_run:
+        if dry_run:
+            return new_dir / "meta.json"
+
+        paper_d.rename(new_dir)
+
+        try:
+            _update_registry_dir_name(db_path, data.get("id", ""), new_dir)
+        except Exception:
+            new_dir.rename(paper_d)
+            raise
+
         return new_dir / "meta.json"
-
-    paper_d.rename(new_dir)
-
-    # Update papers_registry if index.db exists
-    uuid = data.get("id")
-    if uuid:
-        # Legacy layouts stored index.db next to data/papers; modern configs pass the DB explicitly.
-        _update_registry_dir_name(papers_root.parent / "index.db", uuid, new_dir.name)
-
-    return new_dir / "meta.json"
 
 
 def generate_new_stem(meta: PaperMetadata) -> str:
@@ -414,49 +418,55 @@ def _sanitize_for_filename(text: str, max_bytes: int = 255) -> str:
     return text
 
 
-def rename_files(md_path: Path, json_path: Path, new_stem: str, dry_run: bool = False) -> tuple[Path, Path]:
+def rename_files(
+    md_path: Path, json_path: Path, new_stem: str, dry_run: bool = False, *, db_path: Path | None = None
+) -> tuple[Path, Path]:
     """Rename paper directory to new_stem, return new (md_path, json_path)."""
-    paper_d = json_path.parent
-    papers_root = paper_d.parent
-    new_dir = papers_root / new_stem
+    with nullcontext() if dry_run else file_lock(json_path):
+        paper_d = json_path.parent
+        papers_root = paper_d.parent
+        new_dir = papers_root / new_stem
 
-    # Collision avoidance
-    suffix = 2
-    while new_dir.exists() and new_dir != paper_d:
-        new_dir = papers_root / f"{new_stem}-{suffix}"
-        suffix += 1
+        # Collision avoidance
+        suffix = 2
+        while new_dir.exists() and new_dir != paper_d:
+            new_dir = papers_root / f"{new_stem}-{suffix}"
+            suffix += 1
 
-    new_json = new_dir / "meta.json"
-    new_md = new_dir / "paper.md"
+        new_json = new_dir / "meta.json"
+        new_md = new_dir / "paper.md"
 
-    if dry_run:
-        _log.debug("would rename dir: %s -> %s", paper_d.name, new_dir.name)
+        if dry_run:
+            _log.debug("would rename dir: %s -> %s", paper_d.name, new_dir.name)
+            return new_md, new_json
+
+        if paper_d != new_dir:
+            paper_d.rename(new_dir)
+            try:
+                data = json.loads(new_json.read_text(encoding="utf-8"))
+                _update_registry_dir_name(db_path, str(data.get("id") or "").strip(), new_dir)
+            except Exception:
+                new_dir.rename(paper_d)
+                raise
+        _log.debug("renamed dir: %s -> %s", paper_d.name, new_dir.name)
         return new_md, new_json
 
-    if paper_d != new_dir:
-        paper_d.rename(new_dir)
-        try:
-            data = json.loads(new_json.read_text(encoding="utf-8"))
-            uuid = str(data.get("id") or "").strip()
-            if uuid:
-                _update_registry_dir_name(papers_root.parent / "index.db", uuid, new_dir.name)
-        except Exception as e:
-            _log.debug("failed to update papers_registry during rename_files: %s", e)
-    _log.debug("renamed dir: %s -> %s", paper_d.name, new_dir.name)
-    return new_md, new_json
 
+def _update_registry_dir_name(db_path: Path | None, uuid: str, new_dir: Path) -> None:
+    """Update derived locations transactionally using the caller's configured DB.
 
-def _update_registry_dir_name(db_path: Path, uuid: str, new_dir_name: str) -> None:
-    """Best-effort update of dir_name in papers_registry after rename."""
+    Standalone file tools may omit the DB; library commands must pass Config's
+    index_db. Never infer a runtime database from the paper's parent directory.
+    """
     import sqlite3
 
-    if not db_path.exists():
+    if db_path is None or not uuid or not db_path.exists():
         return
-    try:
-        with sqlite3.connect(db_path) as conn:
-            conn.execute(
-                "UPDATE papers_registry SET dir_name = ? WHERE id = ?",
-                (new_dir_name, uuid),
-            )
-    except Exception as e:
-        _log.debug("failed to update papers_registry after rename: %s", e)
+    with sqlite3.connect(db_path) as conn:
+        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        if "papers_registry" in tables:
+            conn.execute("UPDATE papers_registry SET dir_name = ? WHERE id = ?", (new_dir.name, uuid))
+        if "papers" in tables:
+            conn.execute("UPDATE papers SET md_path = ? WHERE paper_id = ?", (str(new_dir / "paper.md"), uuid))
+        if "papers_hash" in tables:
+            conn.execute("DELETE FROM papers_hash WHERE paper_id = ?", (uuid,))

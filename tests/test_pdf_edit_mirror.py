@@ -250,31 +250,34 @@ def test_canonical_only_change_refreshes_mirror(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("canonical_mtime", "mirror_mtime", "expected_direction", "winner"),
-    [
-        (5_000_000_000, 4_000_000_000, "canonical_to_mirror", b"canonical-new"),
-        (4_000_000_000, 5_000_000_000, "mirror_to_canonical", b"mirror-new"),
-        (5_000_000_000, 5_000_000_000, "mirror_to_canonical", b"mirror-new"),
-    ],
+    "canonical_mtime,mirror_mtime",
+    [(5_000_000_000, 4_000_000_000), (4_000_000_000, 5_000_000_000), (5_000_000_000, 5_000_000_000)],
 )
-def test_both_changed_uses_newest_and_equal_mtime_prefers_mirror(
-    tmp_path, canonical_mtime, mirror_mtime, expected_direction, winner
-):
-    store, _paths, reconciler = _reconciler(tmp_path)
+def test_both_changed_preserves_both_files_as_conflict(tmp_path, canonical_mtime, mirror_mtime):
+    store, paths, reconciler = _reconciler(tmp_path)
     canonical = tmp_path / "library" / "paper" / "paper.pdf"
     _write_pdf(canonical, b"base", mtime_ns=2_000_000_000)
     record = reconciler.register(_target(tmp_path, canonical))
     reconciler.reconcile(record.sync_id, record_exists=True)
     record = store.get(record.sync_id)
-    assert record is not None
-    _write_pdf(canonical, b"canonical-new", mtime_ns=canonical_mtime)
-    _write_pdf(record.mirror_path, b"mirror-new", mtime_ns=mirror_mtime)
+    library_edit = _write_pdf(canonical, b"canonical-new", mtime_ns=canonical_mtime)
+    viewer_edit = _write_pdf(record.mirror_path, b"mirror-new", mtime_ns=mirror_mtime)
 
     result = reconciler.reconcile(record.sync_id, record_exists=True)
 
-    assert result.direction == expected_direction
-    assert winner in canonical.read_bytes()
-    assert canonical.read_bytes() == record.mirror_path.read_bytes()
+    assert result.state == "conflict"
+    assert result.retryable is False
+    assert canonical.read_bytes() == library_edit
+    assert record.mirror_path.read_bytes() == viewer_edit
+    service = PdfEditMirrorService(
+        store=store, paths=paths, resolver=None, auto_start=False, deep_validator=lambda _: None
+    )
+    assert service.prepare_for_open(_target(tmp_path, canonical)).launchable is False
+    assert store.get(record.sync_id).state == "conflict"
+    # A deliberate external reconciliation (same bytes on both sides) clears it.
+    record.mirror_path.write_bytes(library_edit)
+    result = reconciler.reconcile(record.sync_id, record_exists=True)
+    assert result.state == "in_sync"
 
 
 def test_invalid_mirror_never_replaces_valid_canonical(tmp_path):
@@ -408,8 +411,8 @@ def test_backup_restore_does_not_report_in_sync_if_reader_changes_mirror_during_
     record.mirror_path.unlink()
     original_copy = reconciler._atomic_copy
 
-    def copy_with_reader_race(source, destination, *, destination_root):
-        copied = original_copy(source, destination, destination_root=destination_root)
+    def copy_with_reader_race(source, destination, *, destination_root, **kwargs):
+        copied = original_copy(source, destination, destination_root=destination_root, **kwargs)
         if destination == record.mirror_path:
             _write_pdf(destination, b"reader-race", mtime_ns=4_000_000_000)
         return copied
@@ -878,3 +881,127 @@ def test_stop_keeps_reference_to_a_monitor_that_outlives_shutdown_timeout(tmp_pa
 
     assert service._thread is thread
     assert thread.join_timeout == 35.0
+
+
+@pytest.mark.parametrize("direction", ["canonical", "mirror"])
+def test_destination_save_after_backup_is_preserved(tmp_path, monkeypatch, direction):
+    store, paths, reconciler = _reconciler(tmp_path)
+    canonical = tmp_path / "library" / "paper" / "paper.pdf"
+    _write_pdf(canonical, b"base", mtime_ns=2_000_000_000)
+    record = reconciler.register(_target(tmp_path, canonical))
+    assert reconciler.reconcile(record.sync_id, record_exists=True).state == "in_sync"
+    source = canonical if direction == "canonical" else record.mirror_path
+    destination = record.mirror_path if direction == "canonical" else canonical
+    source_bytes = _write_pdf(source, b"source-edit", mtime_ns=3_000_000_000)
+    original = reconciler._atomic_copy
+    saved = []
+
+    def save_after_backup(src, dst, **kwargs):
+        copied = original(src, dst, **kwargs)
+        if dst == paths.backup_path(record.sync_id):
+            saved.append(_write_pdf(destination, b"late-edit", mtime_ns=4_000_000_000))
+        return copied
+
+    monkeypatch.setattr(reconciler, "_atomic_copy", save_after_backup)
+    result = reconciler.reconcile(record.sync_id, record_exists=True)
+    assert result.state == "conflict"
+    assert not result.retryable
+    assert destination.read_bytes() == saved[0]
+    assert source.read_bytes() == source_bytes
+    assert store.get(record.sync_id).state == "conflict"
+
+
+@pytest.mark.parametrize("timing", ["before_move", "before_link", "open_handle"])
+def test_destination_publication_preserves_late_saves(tmp_path, monkeypatch, timing):
+    _store, _paths, reconciler = _reconciler(tmp_path)
+    canonical = tmp_path / "library" / "paper" / "paper.pdf"
+    _write_pdf(canonical, b"base", mtime_ns=2_000_000_000)
+    record = reconciler.register(_target(tmp_path, canonical))
+    assert reconciler.reconcile(record.sync_id, record_exists=True).state == "in_sync"
+    _write_pdf(canonical, b"source-edit", mtime_ns=3_000_000_000)
+    destination = record.mirror_path
+    late = b"%PDF-1.4\nlate reader save\n%%EOF\n"
+    rename = Path.rename
+    link = os.link
+    handle = destination.open("r+b") if timing == "open_handle" else None
+
+    def racing_rename(path, target):
+        if path == destination and timing == "before_move":
+            path.write_bytes(late)
+        return rename(path, target)
+
+    def racing_link(src, dst, **kwargs):
+        if dst == destination and Path(src).suffix == ".tmp":
+            if timing == "before_link":
+                destination.write_bytes(late)
+            elif handle is not None:
+                handle.seek(0)
+                handle.write(late)
+                handle.truncate()
+                handle.flush()
+                os.fsync(handle.fileno())
+        return link(src, dst, **kwargs)
+
+    monkeypatch.setattr(Path, "rename", racing_rename)
+    monkeypatch.setattr(os, "link", racing_link)
+    try:
+        result = reconciler.reconcile(record.sync_id, record_exists=True)
+    finally:
+        if handle is not None:
+            handle.close()
+    assert result.state == "conflict"
+    preserved = [destination, *destination.parent.glob(".scholaraio-pdf-recovery/**/*.pdf")]
+    assert any(p.is_file() and p.read_bytes() == late for p in preserved)
+
+
+def test_old_open_handle_save_after_success_is_detected_on_next_reconcile(tmp_path):
+    _store, _paths, reconciler = _reconciler(tmp_path)
+    canonical = tmp_path / "library" / "paper" / "paper.pdf"
+    _write_pdf(canonical, b"base", mtime_ns=2_000_000_000)
+    record = reconciler.register(_target(tmp_path, canonical))
+    assert reconciler.reconcile(record.sync_id, record_exists=True).state == "in_sync"
+    late = b"%PDF-1.4\nsaved through old handle\n%%EOF\n"
+    with record.mirror_path.open("r+b") as handle:
+        _write_pdf(canonical, b"source-edit", mtime_ns=3_000_000_000)
+        assert reconciler.reconcile(record.sync_id, record_exists=True).state == "in_sync"
+        handle.seek(0)
+        handle.write(late)
+        handle.truncate()
+        handle.flush()
+        os.fsync(handle.fileno())
+    assert reconciler.reconcile(record.sync_id, record_exists=True).state == "conflict"
+    retained = list(record.mirror_path.parent.glob(".scholaraio-pdf-recovery/**/*.pdf"))
+    assert any(p.is_file() and p.read_bytes() == late for p in retained)
+
+
+def test_backup_restore_detects_late_save_through_displaced_handle(tmp_path, monkeypatch):
+    store, paths, reconciler = _reconciler(tmp_path)
+    canonical = tmp_path / "library" / "paper" / "paper.pdf"
+    _write_pdf(canonical, b"base", mtime_ns=2_000_000_000)
+    record = reconciler.register(_target(tmp_path, canonical))
+    assert reconciler.reconcile(record.sync_id, record_exists=True).state == "in_sync"
+    _write_pdf(record.mirror_path, b"edit", mtime_ns=3_000_000_000)
+    assert reconciler.reconcile(record.sync_id, record_exists=True).state == "in_sync"
+    assert paths.backup_path(record.sync_id).exists()
+    canonical.write_bytes(b"partial canonical save")
+    record.mirror_path.write_bytes(b"partial mirror save")
+    original = reconciler._atomic_copy
+    late = b"%PDF-1.4\nlate completed save\n%%EOF\n"
+    with canonical.open("r+b") as handle:
+
+        def copy_then_finish_save(source, destination, **kwargs):
+            copied = original(source, destination, **kwargs)
+            if destination == canonical:
+                handle.seek(0)
+                handle.write(late)
+                handle.truncate()
+                handle.flush()
+                os.fsync(handle.fileno())
+            return copied
+
+        monkeypatch.setattr(reconciler, "_atomic_copy", copy_then_finish_save)
+        result = reconciler.reconcile(record.sync_id, record_exists=True)
+    assert result.state == "conflict"
+    assert store.get(record.sync_id).state == "conflict"
+    retained = canonical.parent.glob(".scholaraio-pdf-recovery/**/*.pdf")
+    assert any(p.is_file() and p.read_bytes() == late for p in retained)

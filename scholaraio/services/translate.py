@@ -968,11 +968,9 @@ def _record_translation_meta(
     partial: bool = False,
 ) -> None:
     """Record translation info in meta.json."""
-    from scholaraio.stores.papers import read_meta, write_meta
+    from scholaraio.stores.papers import modify_meta
 
     try:
-        data = read_meta(paper_dir)
-        translations = data.get("translations", {})
         entry: dict[str, object] = {
             "file": f"paper_{target_lang}.md",
             "source_lang": src_lang,
@@ -981,8 +979,10 @@ def _record_translation_meta(
         }
         if partial:
             entry["status"] = "partial"
-        translations[target_lang] = entry
-        data["translations"] = translations
-        write_meta(paper_dir, data)
+
+        def record(current):
+            current.setdefault("translations", {})[target_lang] = entry
+
+        modify_meta(paper_dir, record)
     except Exception as e:
         _log.debug("failed to record translation meta: %s", e)

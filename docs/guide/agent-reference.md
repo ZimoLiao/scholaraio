@@ -204,3 +204,9 @@ The maintenance rule for this repo is simple:
 - keep entry docs slim
 - keep procedures in skills
 - keep heavy reference material in dedicated docs
+
+## Concurrent record updates
+
+Use `scholaraio.stores.papers.update_meta` for field changes, or `modify_meta` for short in-memory edits such as updating a nested translation entry. These helpers lock a persistent sidecar for the complete read–modify–write and atomically replace the JSON through a unique temporary file. Do network calls and extraction before entering the transaction. `write_meta` is a whole-record replacement, not a merge of a previously read snapshot. Workspace reference create/add/remove/show-refresh and workspace rename share one collection lock. Add/remove/show require an existing workspace; use `create` explicitly to initialize one, and never recreate a renamed-away path from a waiting write. Hidden `.scholaraio-<hash>.lock` files live at the paper-library root for metadata, and beside the shared workspace collection directory for references. Keeping the handle outside the directory allows Windows to rename that directory while holding the lock. Metadata transactions in one library root share a single lock, including directory rename and registry commit. This deliberately serializes short metadata writes across papers so a rename cannot change lock identity; network calls and extraction must remain outside it. These are persistent coordination files; do not delete them while writers are active. Restart all writer processes when upgrading from the older per-directory metadata/reference lock protocol.
+
+Library rename/refetch/repair callers pass `cfg.index_db` explicitly so fresh and custom runtime layouts update registered directory names and search paths together. An index update failure rolls the directory name back and surfaces the error. Standalone file tools may omit the database, but must not guess an old runtime path from a file's parent.

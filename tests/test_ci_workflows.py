@@ -18,3 +18,22 @@ def test_macos_semantic_smoke_workflow_runs_issue_search_commands() -> None:
     assert 'grep -q "score:" "$SMOKE_ROOT/semantic.out"' in run_script
     assert 'grep -q "score:" "$SMOKE_ROOT/unified.out"' in run_script
     assert "分数:" not in run_script
+
+
+def test_macos_smoke_paths_cover_canonical_modules():
+    import fnmatch
+
+    workflow = yaml.safe_load(Path(".github/workflows/macos-semantic-smoke.yml").read_text())
+    events = workflow.get("on", workflow.get(True))  # PyYAML YAML 1.1 parses on as True.
+    for event in ("push", "pull_request"):
+        paths = events[event]["paths"]
+        for pattern in paths:
+            if "*" not in pattern:
+                assert Path(pattern).is_file(), pattern
+        for canonical in (
+            "scholaraio/services/index.py",
+            "scholaraio/services/vectors.py",
+            "scholaraio/stores/explore.py",
+            "scholaraio/interfaces/cli/retrieval.py",
+        ):
+            assert any(fnmatch.fnmatch(canonical, pattern) for pattern in paths), canonical

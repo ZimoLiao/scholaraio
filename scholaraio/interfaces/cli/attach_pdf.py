@@ -236,7 +236,7 @@ def cmd_attach_pdf(args: argparse.Namespace, cfg) -> None:
     _ui(f"Generated paper.md: {paper_d.name}/")
 
     # Backfill abstract if missing.
-    from scholaraio.stores.papers import read_meta, write_meta
+    from scholaraio.stores.papers import read_meta, update_meta
 
     data = read_meta(paper_d)
     if not data.get("abstract"):
@@ -245,7 +245,7 @@ def cmd_attach_pdf(args: argparse.Namespace, cfg) -> None:
         abstract = extract_abstract_from_md(existing_md, cfg)
         if abstract:
             data["abstract"] = abstract
-            write_meta(paper_d, data)
+            update_meta(paper_d, abstract=abstract)
             _ui(f"Abstract filled ({len(abstract)} chars)")
 
     # Incremental re-embed + re-index.

@@ -240,7 +240,7 @@ def enrich_toc(
     Returns:
         提取成功返回 ``True``，失败返回 ``False``。
     """
-    from scholaraio.stores.papers import read_meta, write_meta
+    from scholaraio.stores.papers import read_meta, update_meta
 
     paper_d = json_path.parent
     data = read_meta(paper_d)
@@ -311,7 +311,7 @@ def enrich_toc(
 
     data["toc"] = toc
     data["toc_extracted_at"] = datetime.now().isoformat(timespec="seconds")
-    write_meta(paper_d, data)
+    update_meta(paper_d, toc=toc, toc_extracted_at=data["toc_extracted_at"])
     _log.debug("TOC written to JSON")
     return True
 
@@ -348,7 +348,7 @@ def enrich_l3(
     Returns:
         提取成功返回 ``True``，失败返回 ``False``。
     """
-    from scholaraio.stores.papers import read_meta, write_meta
+    from scholaraio.stores.papers import modify_meta, read_meta, update_meta
 
     paper_d = json_path.parent
     data = read_meta(paper_d)
@@ -362,7 +362,12 @@ def enrich_l3(
         data.pop("l3_conclusion", None)  # clear stale conclusion if any
         data["l3_extraction_method"] = "skipped"
         data["l3_extracted_at"] = datetime.now().isoformat(timespec="seconds")
-        write_meta(paper_d, data)
+
+        def skip_l3(current):
+            current.pop("l3_conclusion", None)
+            current.update(l3_extraction_method="skipped", l3_extracted_at=data["l3_extracted_at"])
+
+        modify_meta(paper_d, skip_l3)
         return True
 
     if data.get("l3_conclusion") and not force:
@@ -400,7 +405,7 @@ def enrich_l3(
     data["l3_conclusion"] = conclusion
     data["l3_extraction_method"] = method
     data["l3_extracted_at"] = datetime.now().isoformat(timespec="seconds")
-    write_meta(paper_d, data)
+    update_meta(paper_d, l3_conclusion=conclusion, l3_extraction_method=method, l3_extracted_at=data["l3_extracted_at"])
     _log.debug("L3 written to JSON (method: %s, %d chars)", method, len(conclusion))
     return True
 
