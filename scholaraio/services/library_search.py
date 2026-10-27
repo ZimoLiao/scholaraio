@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from scholaraio.core.search_text import fold_search_text
 from scholaraio.stores.library_state import library_records
 from scholaraio.stores.papers import authors_text, normalize_paper_type
 
@@ -93,7 +94,7 @@ class LibrarySearchFilters:
 
 
 def _contains(value: object, needle: str) -> bool:
-    return needle.casefold() in str(value or "").casefold()
+    return fold_search_text(needle) in fold_search_text(value)
 
 
 def _safe_year(value: object) -> int | None:
@@ -297,7 +298,6 @@ def search_main_library(
         }
 
     year = active_filters.year_expression
-    journal = active_filters.journal or None
     paper_type = normalize_paper_type(active_filters.paper_type) or None
     paper_ids = set(candidates)
     try:
@@ -310,7 +310,9 @@ def search_main_library(
                 top_k=bounded_limit,
                 cfg=cfg,
                 year=year,
-                journal=journal,
+                # The candidate IDs already apply accent-insensitive journal
+                # matching; SQLite LIKE would reject accented names again.
+                journal=None,
                 paper_type=paper_type,
                 paper_ids=paper_ids,
             )

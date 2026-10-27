@@ -48,7 +48,8 @@ def _write_paper(
     )
 
 
-def test_library_search_filters_compose_before_keyword_retrieval(tmp_path, monkeypatch):
+@pytest.mark.parametrize("author", ["JANE DOE", "Jáné Doe", "Ja\u0301ne Doe"])
+def test_library_search_filters_compose_before_keyword_retrieval(tmp_path, monkeypatch, author):
     cfg = _build_config({}, tmp_path)
     _write_paper(
         cfg.papers_dir,
@@ -98,7 +99,7 @@ def test_library_search_filters_compose_before_keyword_retrieval(tmp_path, monke
     monkeypatch.setattr("scholaraio.services.index.search", fake_search)
     filters = LibrarySearchFilters.from_strings(
         title="reacting",
-        author="JANE DOE",
+        author=author,
         year_from="2020",
         year_to="2026",
         journal="fluid mechanics",
@@ -110,7 +111,7 @@ def test_library_search_filters_compose_before_keyword_retrieval(tmp_path, monke
 
     assert captured["paper_ids"] == {"target-paper"}
     assert captured["year"] == "2020-2026"
-    assert captured["journal"] == "fluid mechanics"
+    assert captured["journal"] is None
     assert captured["paper_type"] == "journal-article"
     assert response["results"] == [
         {
@@ -399,9 +400,9 @@ def test_library_search_real_index_matches_library_stable_id(tmp_path):
         "Doe-2024-Target",
         paper_id="target-paper",
         title="Turbulence closure for reacting flows",
-        authors=["Jane Doe"],
+        authors=["Javier Jiménez"],
         year=2024,
-        journal="Journal of Fluid Mechanics",
+        journal="Mécanique des fluides",
         doi="10.1000/target",
         paper_type="JournalArticle",
         abstract="A unique flamelet closure marker.",
@@ -425,7 +426,8 @@ def test_library_search_real_index_matches_library_stable_id(tmp_path):
         query="flamelet",
         mode="keyword",
         filters=LibrarySearchFilters.from_strings(
-            author="doe",
+            author="jimenez",
+            journal="mecanique",
             year_from="2020",
             paper_type="journal-article",
         ),

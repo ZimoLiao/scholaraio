@@ -23,6 +23,11 @@ build/
 # SQLite temp files
 *.db-journal
 
+# Local runtime locks, Windows shell artifacts, and dependency resolution
+/.scholaraio-*.lock
+/nul
+/uv.lock
+
 # Logs (outside data/)
 *.log
 

@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from scholaraio.core.config import Config
+from scholaraio.core.search_text import fold_search_text
 from scholaraio.services import library_view as view
 from scholaraio.stores.library_state import Manifest, library_manifest, library_stamp
 from scholaraio.stores.papers import read_meta
@@ -64,7 +65,7 @@ class LibraryCatalog:
         self.worker: threading.Thread | None = None
         self.scan_error = ""
         self.db = sqlite3.connect(":memory:", check_same_thread=False)
-        self.db.create_function("fold", 1, lambda value: str(value or "").casefold(), deterministic=True)
+        self.db.create_function("fold", 1, fold_search_text, deterministic=True)
         self.db.execute("""CREATE TABLE records (
             path TEXT PRIMARY KEY, paper_id TEXT, title TEXT, authors_text TEXT,
             year INTEGER, journal TEXT, doi TEXT, paper_type TEXT, volume TEXT,
@@ -277,7 +278,7 @@ class LibraryCatalog:
             ]:
                 if params.get(key):
                     clauses.append(f"instr(fold({column}), ?) > 0")
-                    values.append(params[key].casefold())
+                    values.append(fold_search_text(params[key]))
             for key, column in [("paper_type", "paper_type"), ("volume", "volume")]:
                 if params.get(key):
                     clauses.append(f"{column} = ?")
