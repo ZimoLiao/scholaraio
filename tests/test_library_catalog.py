@@ -9,6 +9,26 @@ from scholaraio.services.library_catalog import LibraryCatalog
 from scholaraio.stores.papers import update_meta
 
 
+@pytest.mark.parametrize("field", ["q", "author", "title", "journal"])
+@pytest.mark.parametrize("query", ["jimenez", "JIMÉNEZ", "Jime\u0301nez"])
+def test_catalog_search_ignores_diacritics(tmp_path, field, query):
+    cfg = _build_config({}, tmp_path)
+    directory = cfg.papers_dir / "target"
+    directory.mkdir(parents=True)
+    (directory / "meta.json").write_text(
+        json.dumps({"id": "target", "title": "Jiménez", "authors": ["Jiménez"], "journal": "Jiménez"}),
+        encoding="utf-8",
+    )
+    catalog = LibraryCatalog(cfg, "main", background=False)
+    try:
+        result = catalog.page({field: query})
+        assert result["matched"] == 1
+        assert result["papers"][0]["authors_text"] == "Jiménez"
+        assert catalog.page({field: "unrelated"})["matched"] == 0
+    finally:
+        catalog.close()
+
+
 def test_page_filters_full_library_and_reuses_unchanged_records(tmp_path, monkeypatch):
     cfg = _build_config({}, tmp_path)
     cfg.ensure_dirs()

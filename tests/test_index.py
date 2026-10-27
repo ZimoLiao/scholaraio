@@ -10,7 +10,42 @@ from __future__ import annotations
 import json
 import sqlite3
 
+import pytest
+
 from scholaraio.services.index import build_index, lookup_paper, search, search_author, unified_search
+
+
+@pytest.mark.parametrize(
+    ("stored", "query"),
+    [
+        ("Javier Jiménez", "jimenez"),
+        ("Javier Jime\u0301nez", "JIMÉNEZ"),
+        ("Javier Jimenez", "Jiménez"),
+        ("Müller", "muller"),
+        ("İpek", "ipek"),
+        ("Łukasz Øster", "lukasz oster"),
+        ("张伟", "张伟"),
+    ],
+)
+def test_author_search_ignores_diacritics(tmp_path, tmp_db, stored, query):
+    papers = tmp_path / "papers"
+    target = papers / "target"
+    target.mkdir(parents=True)
+    (target / "meta.json").write_text(
+        json.dumps({"id": "target", "title": "Turbulence", "authors": [stored], "year": 2024}),
+        encoding="utf-8",
+    )
+    other = papers / "other"
+    other.mkdir()
+    (other / "meta.json").write_text(
+        json.dumps({"id": "other", "title": "Turbulence", "authors": ["Someone Else"], "year": 2025}),
+        encoding="utf-8",
+    )
+    build_index(papers, tmp_db)
+    results = search_author(query, tmp_db, top_k=1, year="2024", paper_ids={"target"})
+    assert [row["paper_id"] for row in results] == ["target"]
+    assert results[0]["authors"] == stored
+    assert search_author("missing", tmp_db) == []
 
 
 class TestBuildAndSearch:

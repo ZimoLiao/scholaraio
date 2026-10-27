@@ -45,6 +45,7 @@ scholaraio top-cited
 ```
 
 - `search` performs paper-level keyword search.
+- `search-author` matches author substrings without case or accent sensitivity: `jimenez` finds `Jiménez`, and `muller` finds `Müller`. Common stroked letters (`ø`, `ł`, `đ`) also match their plain equivalents. WebUI metadata search and structured text filters use the same folding. Original metadata and displayed names are preserved; no index rebuild is needed for this behavior. Keyword FTS uses SQLite's `unicode61` tokenizer, which already ignores most Latin accents but does not transliterate all stroked letters.
 - `index --chunks` builds a line-addressable evidence chunk index from `paper.md` and `meta.json["toc"]`.
 - `search --chunk` searches evidence chunks and returns the source paper, section, line range, and snippet. It supports the normal `search` filters such as `--year`, `--journal`, and `--type`. This is evidence retrieval, not a knowledge graph.
 - `vsearch` performs semantic vector search.

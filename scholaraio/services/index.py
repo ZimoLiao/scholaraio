@@ -21,6 +21,7 @@ import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypedDict, overload
 
+from scholaraio.core.search_text import fold_search_text
 from scholaraio.stores.papers import authors_text, best_citation, normalize_paper_type, parse_year_range
 
 if TYPE_CHECKING:
@@ -622,10 +623,10 @@ def search_author(
     paper_type: str | None = None,
     paper_ids: set[str] | None = None,
 ) -> list[dict]:
-    """按作者名搜索论文（LIKE 模糊匹配）。
+    """按作者名搜索论文（忽略大小写和重音的子串匹配）。
 
     Args:
-        query: 作者名（或部分名字），不区分大小写。
+        query: 作者名（或部分名字），不区分大小写和重音符号。
         db_path: SQLite 索引数据库路径。
         top_k: 最多返回条数，为 ``None`` 时从 ``cfg.search.top_k`` 读取。
         cfg: 可选的 :class:`~scholaraio.core.config.Config` 实例。
@@ -646,6 +647,7 @@ def search_author(
 
     conn = sqlite3.connect(db_path)
     try:
+        conn.create_function("fold_search_text", 1, fold_search_text, deterministic=True)
         _ensure_fts_table(conn)
 
         conn.row_factory = sqlite3.Row
@@ -656,11 +658,11 @@ def search_author(
             f"""
             SELECT {_SEARCH_COLS}
             FROM papers
-            WHERE authors LIKE ?{filter_sql}{allowed_sql}
+            WHERE fold_search_text(authors) LIKE ?{filter_sql}{allowed_sql}
             ORDER BY year DESC
             LIMIT ?
             """,
-            [f"%{query}%", *filter_params, top_k],
+            [f"%{fold_search_text(query)}%", *filter_params, top_k],
         ).fetchall()
         results = [dict(r) for r in rows]
         _enrich_dir_names(results, conn)
