@@ -123,6 +123,32 @@ globalThis.done = (async () => {
   await refreshActive({ background: true });
   assert.equal(els.detailTitle.textContent, "Updated title", "updates must resume after selection clears");
 
+  const otherRow = { paper_id: "b", title: "Other paper" };
+  state.rows.main = [row, otherRow];
+  clearCalls();
+  setHandler(url => url.includes("/papers") ? { papers: [row, otherRow] } :
+    new Promise(resolve => { release = resolve; }));
+  const clickedDetail = selectRow("b");
+  await Promise.resolve(); await Promise.resolve();
+  assert.equal(state.detail, null, "switching records must disable the old record's actions");
+  assert.equal(els.detailTitle.textContent, "Loading details…");
+  await refreshActive({ background: true });
+  assert.equal(getCalls().filter(url => url.includes("/detail")).length, 1,
+    "background polling must not supersede a pending click");
+  release({ ...otherRow, abstract: "Other abstract" });
+  await clickedDetail;
+  assert.equal(els.detailTitle.textContent, "Other paper");
+  assert.equal(state.detailInFlight, 0);
+
+  setHandler(url => {
+    if (url.includes("/papers")) return { papers: [row, otherRow] };
+    throw new Error("offline");
+  });
+  await refreshActive({ background: true });
+  assert.equal(els.detailTitle.textContent, "Other paper", "failed refresh must retain readable details");
+  assert.equal(state.detail.paper_id, "b");
+  assert.equal(state.detailInFlight, 0, "failed detail requests must release the polling guard");
+
   setHandler(() => { throw new Error("offline"); });
   await refreshActive({ background: true });
   assert.equal(state.refreshInFlight.main, 0, "errors must release polling guard");

@@ -109,6 +109,74 @@ def test_real_browser_preserves_dragged_selection_and_resumes_updates(tmp_path):
 
 @pytest.mark.browser
 @pytest.mark.skipif(os.environ.get("SCHOLARAIO_BROWSER_TESTS") != "1", reason="opt-in Chromium integration")
+def test_real_browser_keeps_selected_details_through_slow_requests_and_failed_polls(tmp_path):
+    from playwright.sync_api import expect, sync_playwright
+
+    cfg = _build_config({}, tmp_path)
+    for paper_id in ("a", "b"):
+        paper = cfg.papers_dir / paper_id
+        paper.mkdir(parents=True)
+        write_meta(
+            paper,
+            {"id": paper_id, "title": f"Paper {paper_id}", "authors": ["Jane Doe"], "year": 2026},
+        )
+    with patch(
+        "scholaraio.services.system_open.default_application_open_capability",
+        return_value=DefaultApplicationOpenCapability(False, None, "browser test"),
+    ):
+        server = create_library_view_server(cfg, port=0)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            page = browser.new_page()
+            errors = []
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            page.goto(f"http://127.0.0.1:{server.server_port}")
+            title = page.locator("#detail-title")
+            expect(title).to_have_text("Paper a")
+            pending = []
+
+            def hold_detail(route):
+                pending.append((route, route.fetch()))
+
+            page.route("**/api/main/detail?id=b", hold_detail)
+            page.locator("#paper-table-body tr").filter(has_text="Paper b").click()
+            expect(title).to_have_text("Loading details…")
+            expect(page.locator("#detail-actions")).to_be_hidden()
+            # Cross a real automatic poll while the clicked detail is pending.
+            with page.expect_response(lambda response: "/api/main/papers" in response.url):
+                page.wait_for_timeout(2500)
+            assert len(pending) == 1
+            route, response = pending[0]
+            route.fulfill(response=response)
+            expect(title).to_have_text("Paper b")
+            expect(page.locator("#metadata-section")).to_be_visible()
+            expect(page.locator("#detail-actions")).to_be_visible()
+
+            page.unroute("**/api/main/detail?id=b", hold_detail)
+            page.route(
+                "**/api/main/detail?id=b",
+                lambda route: route.fulfill(status=503, json={"error": "Temporarily unavailable"}),
+            )
+            expect(page.locator("#connection-label")).to_have_text("Detail failed", timeout=5000)
+            expect(title).to_have_text("Paper b")
+            expect(page.locator("#metadata-section")).to_be_visible()
+
+            page.unroute("**/api/main/detail?id=b")
+            expect(page.locator("#connection-label")).to_have_text("Live", timeout=5000)
+            expect(title).to_have_text("Paper b")
+            assert errors == []
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)
+
+
+@pytest.mark.browser
+@pytest.mark.skipif(os.environ.get("SCHOLARAIO_BROWSER_TESTS") != "1", reason="opt-in Chromium integration")
 def test_real_browser_pages_and_filters_across_the_library(tmp_path):
     from playwright.sync_api import expect, sync_playwright
 

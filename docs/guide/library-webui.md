@@ -108,6 +108,11 @@ The record list continues to refresh from the library. Expensive semantic or uni
 
 Unchanged rows and detail text retain their existing browser elements. Automatic list/detail refresh pauses while you drag or retain a text selection, read an inline PDF, or leave the tab in the background, so you can select and copy titles, authors, and abstracts without interruptions. Clear the selection to resume automatic updates, or use **Refresh** for an explicit update. Slow automatic refresh requests do not overlap.
 
+Selecting a different record shows **Loading details…** until its details arrive.
+Automatic polling lets a pending selection finish, and a temporary refresh failure
+keeps already loaded details readable. PDF synchronization status failures appear
+as a separate message while bibliographic details remain available.
+
 ## Troubleshooting
 
 | Message or state | What to do |

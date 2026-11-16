@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import threading
 import time
 from pathlib import Path
@@ -136,6 +137,75 @@ def test_store_status_does_not_expose_paths(tmp_path):
         "message": "",
     }
     assert "/secret" not in repr(payload)
+
+
+def test_store_closes_connections_after_reads_writes_and_failed_transactions(tmp_path, monkeypatch):
+    connections = []
+    original_connect = sqlite3.connect
+
+    def tracked_connect(*args, **kwargs):
+        connection = original_connect(*args, **kwargs)
+        # Retain connections so garbage collection cannot hide a resource leak.
+        connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(sqlite3, "connect", tracked_connect)
+    store = PdfEditMirrorStore(tmp_path / "sync.db")
+    record = store.get_or_create(
+        library_kind="main",
+        paper_id="paper",
+        canonical_path=tmp_path / "paper.pdf",
+        mirror_path=tmp_path / "mirror.pdf",
+        identity="doi:10.1000/test",
+    )
+    assert store.get(record.sync_id) == record
+    assert store.get_by_paper("main", "paper") == record
+    assert store.list_by_identity("main", record.identity) == [record]
+    assert store.list_active() == [record]
+    store.acknowledge_recovery(record.sync_id, {"saved.pdf": ("hash", 1, 2, 3)})
+    assert store.recovery_acknowledgements(record.sync_id) == {"saved.pdf": ("hash", 1, 2, 3)}
+
+    with pytest.raises(sqlite3.IntegrityError):
+        store.update(record.sync_id, paper_id=None)
+    assert store.get(record.sync_id) == record
+    retired = store.mark_retired(record.sync_id, retired_at=1)
+    assert store.list_retired_before(2) == [retired]
+    store.delete(record.sync_id)
+    assert store.get(record.sync_id) is None
+    assert store.recovery_acknowledgements(record.sync_id) == {}
+
+    try:
+        for connection in connections:
+            with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+                connection.execute("SELECT 1")
+    finally:
+        for connection in connections:
+            connection.close()
+
+
+def test_store_closes_connection_when_configuration_fails(tmp_path, monkeypatch):
+    connections = []
+    original_connect = sqlite3.connect
+
+    class FailingConnection(sqlite3.Connection):
+        def execute(self, sql, *args):
+            if sql == "PRAGMA journal_mode = WAL":
+                raise sqlite3.OperationalError("journal unavailable")
+            return super().execute(sql, *args)
+
+    def failing_connect(*args, **kwargs):
+        connection = original_connect(*args, **kwargs, factory=FailingConnection)
+        connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(sqlite3, "connect", failing_connect)
+    with pytest.raises(sqlite3.OperationalError, match="journal unavailable"):
+        PdfEditMirrorStore(tmp_path / "sync.db")
+    try:
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            connections[0].execute("SELECT 1")
+    finally:
+        connections[0].close()
 
 
 @pytest.mark.parametrize(

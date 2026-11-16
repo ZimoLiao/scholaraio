@@ -33,6 +33,7 @@ const state = {
   pdf: null,
   pdfFullscreen: false,
   detailRequestSeq: 0,
+  detailInFlight: 0,
   refreshRequestSeq: { main: 0, proceedings: 0 },
   refreshInFlight: { main: 0, proceedings: 0 },
   selectingText: false,
@@ -1107,14 +1108,20 @@ function deferBackgroundRefresh() {
 }
 
 async function selectRow(paperId, { background = false } = {}) {
+  if (background && state.detailInFlight) return;
   if (state.selected[state.tab] !== paperId || (state.recovery && state.recovery.source !== state.tab)) {
     closePdfRecovery();
   }
   const requestTab = state.tab;
   const requestSeq = ++state.detailRequestSeq;
+  state.detailInFlight = requestSeq;
   const selectionChanged = state.selected[requestTab] !== paperId;
   state.selected[requestTab] = paperId;
   if (selectionChanged) renderTable();
+  if (state.detail?.paper_id !== paperId) {
+    renderDetail(null);
+    els.detailTitle.textContent = "Loading details…";
+  }
   try {
     const endpoint = requestTab === "main" ? "/api/main/detail" : "/api/proceedings/detail";
     const detail = await fetchJson(`${endpoint}?id=${encodeURIComponent(paperId)}`);
@@ -1130,7 +1137,11 @@ async function selectRow(paperId, { background = false } = {}) {
     }
     if (background && deferBackgroundRefresh()) return;
     setConnection("error", "Detail failed");
-    renderDetail({ title: "Detail unavailable", abstract: String(err) });
+    if (state.detail?.paper_id !== paperId) {
+      renderDetail({ title: "Detail unavailable", abstract: String(err) });
+    }
+  } finally {
+    if (state.detailInFlight === requestSeq) state.detailInFlight = 0;
   }
 }
 

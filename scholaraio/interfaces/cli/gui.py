@@ -403,7 +403,16 @@ class LibraryViewRequestHandler(BaseHTTPRequestHandler):
                     "last_success_at": "",
                     "message": "",
                 }
-            return self.pdf_edit_mirror_service.status(source, paper_id)
+            try:
+                return self.pdf_edit_mirror_service.status(source, paper_id)
+            except (OSError, sqlite3.Error):
+                _LOG.warning("Could not read PDF synchronization status", exc_info=True)
+                return {
+                    "state": "sync_failed",
+                    "retryable": True,
+                    "last_success_at": "",
+                    "message": "Could not refresh PDF synchronization status. Please retry.",
+                }
 
         try:
             if path == "/api/health":

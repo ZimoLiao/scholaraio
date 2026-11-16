@@ -2175,6 +2175,24 @@ def test_library_view_wsl_native_open_reuses_stable_edit_mirror_and_exposes_stat
     service.stop.assert_called_once_with()
 
 
+@pytest.mark.parametrize("source,paper_id", [("main", "action-paper"), ("proceedings", "proceeding-action-paper")])
+def test_library_view_details_survive_pdf_sync_database_failure(tmp_path, source, paper_id):
+    import sqlite3
+
+    cfg, _main_dir, _child_dir = _write_gui_action_fixtures(tmp_path)
+    with _running_library_server(cfg) as (server, base_url):
+        server.RequestHandlerClass.pdf_edit_mirror_service = SimpleNamespace(
+            status=Mock(side_effect=sqlite3.OperationalError("database is locked")),
+        )
+        detail, _headers = _json_response(f"{base_url}/api/{source}/detail?id={paper_id}")
+
+    assert detail["paper_id"] == paper_id
+    assert detail["title"]
+    assert "abstract" in detail
+    assert detail["pdf_sync"]["state"] == "sync_failed"
+    assert detail["pdf_sync"]["retryable"] is True
+
+
 def test_library_view_wsl_refuses_unvalidated_mirror_so_client_can_download_canonical(tmp_path):
     from scholaraio.services.pdf_edit_mirror import PdfOpenPreparation
     from scholaraio.services.system_open import DefaultApplicationOpenCapability

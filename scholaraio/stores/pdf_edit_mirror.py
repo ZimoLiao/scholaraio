@@ -6,6 +6,8 @@ import sqlite3
 import threading
 import time
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -88,13 +90,21 @@ class PdfEditMirrorStore:
         self._schema_lock = threading.Lock()
         self._ensure_schema()
 
-    def _connect(self, *, configure_journal: bool = False) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self, *, configure_journal: bool = False) -> Iterator[sqlite3.Connection]:
         connection = sqlite3.connect(self.db_path, timeout=10)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA busy_timeout = 10000")
-        if configure_journal:
-            connection.execute("PRAGMA journal_mode = WAL")
-        return connection
+        try:
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA busy_timeout = 10000")
+            if configure_journal:
+                connection.execute("PRAGMA journal_mode = WAL")
+            # SQLite's context manager commits/rolls back but does not close.
+            # Close on the owning thread instead of leaving live connections
+            # for garbage collection during concurrent GUI/monitor polling.
+            with connection:
+                yield connection
+        finally:
+            connection.close()
 
     def _ensure_schema(self) -> None:
         with self._schema_lock:
