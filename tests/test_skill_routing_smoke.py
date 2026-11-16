@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -97,10 +98,15 @@ def _score(prompt: str, tokens: list[str]) -> float:
 
 def _top_skill(prompt: str) -> tuple[str, float]:
     corpora = _skill_corpus()
-    ranked = sorted(
-        ((name, _score(prompt, tokens)) for name, tokens in corpora.items()), key=lambda x: x[1], reverse=True
-    )
+    ranked = sorted(((name, _score(prompt, tokens)) for name, tokens in corpora.items()), key=lambda x: (-x[1], x[0]))
     return ranked[0]
+
+
+@pytest.mark.parametrize("skill_names", [("alpha", "omega"), ("omega", "alpha")])
+def test_top_skill_breaks_ties_by_name(skill_names: tuple[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(globals(), "_skill_corpus", lambda: {name: ["report"] for name in skill_names})
+
+    assert _top_skill("report") == ("alpha", 2.5)
 
 
 def test_conference_poster_prompt_prefers_poster_skill() -> None:
