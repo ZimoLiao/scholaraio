@@ -49,7 +49,7 @@ pip install biopython py3Dmol pycirclize toytree matplotlib seaborn pandas
 pip install fair-esm
 
 # 数据获取
-pip install ncbi-datasets-cli
+conda install -c conda-forge ncbi-datasets-cli
 ```
 
 验证：`minimap2 --version`、`samtools --version`、`blastn -version` 均应正常输出。
